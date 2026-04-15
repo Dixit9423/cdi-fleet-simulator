@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CDI Fleet Simulator — Control Panel</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --card:     #1a1d27;
+    --border:   #2a2d3a;
+    --text:     #e1e4ec;
+    --muted:    #8b8fa3;
+    --accent:   #3b82f6;
+    --green:    #22c55e;
+    --yellow:   #eab308;
+    --red:      #ef4444;
+    --orange:   #f97316;
+    --cyan:     #06b6d4;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 20px; min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 1.4rem; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  .kpi-bar {
+    display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .kpi {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 24px; min-width: 130px; text-align: center;
+  }
+  .kpi .value { font-size: 2rem; font-weight: 700; }
+  .kpi .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi.measuring .value { color: var(--green); }
+  .kpi.idle .value { color: var(--yellow); }
+  .kpi.standby .value { color: var(--orange); }
+  .kpi.total .value { color: var(--accent); }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+    gap: 16px;
+  }
+  .device-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; transition: border-color .2s;
+  }
+  .device-card:hover { border-color: var(--accent); }
+  .device-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .device-id { font-size: 1.1rem; font-weight: 600; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge.MEASURING { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge.IDLE      { background: rgba(234,179,8,.15);  color: var(--yellow); }
+  .badge.STANDBY   { background: rgba(249,115,22,.15); color: var(--orange); }
+  .badge.ERROR     { background: rgba(239,68,68,.15);  color: var(--red); }
+
+  .device-meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
+    font-size: 0.82rem; margin-bottom: 14px;
+  }
+  .device-meta span.label { color: var(--muted); }
+  .device-meta span.val { color: var(--text); }
+
+  .actions {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  button {
+    padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); cursor: pointer;
+    font-size: 0.78rem; font-weight: 500; transition: all .15s;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: #2563eb; }
+  button.danger { border-color: var(--red); color: var(--red); }
+  button.danger:hover { background: rgba(239,68,68,.15); }
+
+  select, input {
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); font-size: 0.78rem;
+  }
+
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; vertical-align: middle;
+  }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.disconnected { background: var(--red); }
+
+  .refresh-info { font-size: 0.72rem; color: var(--muted); }
+  #toast {
+    position: fixed; bottom: 20px; right: 20px; padding: 12px 20px;
+    background: var(--accent); color: #fff; border-radius: 8px;
+    font-size: 0.85rem; display: none; z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏥 CDI <span>Fleet Simulator</span> — Control Panel</h1>
+  <div style="text-align:right">
+    <div style="font-size:0.72rem; color:var(--muted); margin-bottom:4px">
+      Flow: <span style="color:var(--yellow)">IDLE</span> →
+      <span style="color:var(--orange)">STANDBY</span> →
+      <span style="color:var(--green)">MEASURING</span> →
+      <span style="color:var(--orange)">STANDBY</span> /
+      <span style="color:var(--yellow)">IDLE</span>
+    </div>
+    <span class="refresh-info">Auto-refresh: 5s | <span id="lastUpdate">—</span></span>
+  </div>
+</header>
+
+<div class="kpi-bar" id="kpis"></div>
+<div class="grid" id="deviceGrid"></div>
+<div id="toast"></div>
+
+<script>
+const API = '';  // same origin
+
+let profiles = {};
+let lastFleetData = null;  // Cache to prevent unnecessary DOM updates
+let refreshErrors = 0;  // Track consecutive errors to prevent spam
+let maxRefreshErrors = 3;  // Max errors before backing off
+let refreshBackoffMs = 3000;  // Start with 3s backoff
+
+async function fetchProfiles() {
+  try {
+    const r = await fetch(`${API}/api/profiles`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    profiles = await r.json();
+    console.log('[Fleet UI] Profiles loaded:', Object.keys(profiles).length);
+  } catch(e) { 
+    console.error('[Fleet UI] Failed to load profiles:', e);
+  }
+}
+
+function profileOptions() {
+  return Object.keys(profiles).map(n => `<option value="${n}">${n}</option>`).join('');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+async function apiPost(url, body) {
+  try {
+    console.log('[Fleet UI] POST', url, JSON.stringify(body));
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      // Show server validation errors (e.g., state flow violations)
+      const detail = j.detail || j.message || `HTTP ${r.status}`;
+      console.warn('[Fleet UI] API rejected:', detail);
+      toast(`⚠ ${detail}`);
+      return;
+    }
+    console.log('[Fleet UI] Response:', j);
+    toast(`✓ ${j.status || 'OK'}`);
+    // Refresh after a small delay to let server process
+    setTimeout(refresh, 500);
+  } catch(e) { 
+    console.error('[Fleet UI] API error:', url, e);
+    toast(`✗ ${e.message}`); 
+  }
+}
+
+function renderKPIs(summary) {
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi total"><div class="value">${summary.total}</div><div class="label">Total</div></div>
+    <div class="kpi measuring"><div class="value">${summary.connected}</div><div class="label">Connected</div></div>
+    <div class="kpi measuring"><div class="value">${summary.measuring}</div><div class="label">Measuring</div></div>
+    <div class="kpi idle"><div class="value">${summary.idle}</div><div class="label">Idle</div></div>
+    <div class="kpi standby"><div class="value">${summary.standby}</div><div class="label">Standby</div></div>
+  `;
+}
+
+function renderDevice(d) {
+  const connDot = d.connected ? 'connected' : 'disconnected';
+  const badgeState = d.error ? 'ERROR' : d.current_state;
+  const sessionInfo = d.measurement_session_id
+    ? `<span class="label">Session:</span> <span class="val">${d.measurement_session_id}</span>` : '';
+  const patientInfo = d.patient_id
+    ? `<span class="label">Patient:</span> <span class="val">${d.patient_id}</span>` : '';
+  const tickInfo = d.current_state === 'MEASURING'
+    ? `<span class="label">Ticks:</span> <span class="val">${d.total_ticks_sent} (seq ${d.seq_no})</span>` : '';
+  const errorInfo = d.error
+    ? `<span class="label">Error:</span> <span class="val" style="color:var(--red)">${d.error}</span>` : '';
+
+  return `
+    <div class="device-card" data-device-id="${d.device_id}">
+      <div class="device-header">
+        <span class="device-id">
+          <span class="status-dot ${connDot}"></span>
+          ${d.device_id}
+        </span>
+        <span class="badge ${badgeState}">${badgeState}</span>
+      </div>
+      <div class="device-meta">
+        <span class="label">Serial:</span>  <span class="val">${d.serial}</span>
+        <span class="label">Site:</span>    <span class="val">${d.site}</span>
+        <span class="label">Version:</span> <span class="val">${d.sw_version}</span>
+        <span class="label">Profile:</span> <span class="val">${d.profile_name || '—'}</span>
+        ${patientInfo}
+        ${sessionInfo}
+        ${tickInfo}
+        ${errorInfo}
+      </div>
+      <div class="actions">
+        ${d.current_state === 'IDLE' ? `
+          <!-- IDLE: Select profile → go to Standby -->
+          <select id="prof_${d.device_id}" class="profile-select" onchange="profileChanged(this, '${d.device_id}')">
+            ${profileOptions()}
+          </select>
+          <button class="primary" onclick="toStandby('${d.device_id}')">⏸ Standby</button>
+        ` : ''}
+        ${d.current_state === 'STANDBY' ? `
+          <!-- STANDBY: Start measuring or go back to Idle -->
+          <input id="pat_${d.device_id}" placeholder="PAT-ID (optional)" style="width:130px" class="patient-input" />
+          <button class="primary" onclick="startMeasuring('${d.device_id}')">▶ Start Measuring</button>
+          <button onclick="toIdle('${d.device_id}')">↩ Idle</button>
+        ` : ''}
+        ${d.current_state === 'MEASURING' ? `
+          <!-- MEASURING: Stop (→Idle) or Standby -->
+          <button class="danger" onclick="stopMeasuring('${d.device_id}')">■ Stop → Idle</button>
+          <button onclick="toStandby('${d.device_id}')">⏸ Standby</button>
+          ${!d.patient_id ? `
+            <input id="bind_${d.device_id}" placeholder="PAT-ID" style="width:100px" class="bind-input" />
+            <button onclick="bindPatient('${d.device_id}')">🔗 Bind</button>
+          ` : `
+            <button onclick="releasePatient('${d.device_id}')">🔓 Release</button>
+          `}
+        ` : ''}
+        ${d.patient_id && d.current_state !== 'MEASURING' ? `
+          <button onclick="releasePatient('${d.device_id}')">🔓 Release Patient</button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch(`${API}/api/fleet/summary`);
+    
+    // Handle HTTP errors
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    
+    const data = await r.json();
+    
+    // Check if data has actually changed to minimize DOM updates
+    const dataStr = JSON.stringify(data);
+    if (lastFleetData === dataStr) {
+      // Data unchanged, skip DOM update but reset error counter
+      refreshErrors = 0;
+      return;
+    }
+    lastFleetData = dataStr;
+    
+    renderKPIs(data);
+    document.getElementById('deviceGrid').innerHTML = data.devices.map(renderDevice).join('');
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    
+    // Reset error counter on success
+    refreshErrors = 0;
+  } catch(e) {
+    refreshErrors++;
+    if (refreshErrors <= 2) {
+      // Only log first 2 errors to avoid spam
+      console.error('[Fleet UI] Refresh failed:', e, `(attempt ${refreshErrors})`);
+    }
+    
+    // Show warning toast only on first error
+    if (refreshErrors === 1) {
+      toast(`⚠ API not responding (${e.message})`);
+    }
+  }
+}
+
+// Prevent profile dropdown from triggering page refresh
+function profileChanged(select, deviceId) {
+  // Just log, don't trigger any action
+  console.log('[Fleet UI] Profile selected:', select.value, 'for device:', deviceId);
+  // User will click Start button when ready
+}
+
+function startMeasuring(id) {
+  // Start from STANDBY — profile already sent during IDLE→STANDBY
+  const pat = document.getElementById(`pat_${id}`)?.value || null;
+  console.log('[Fleet UI] Starting measurement, device:', id, 'patient:', pat);
+  apiPost(`${API}/api/devices/${id}/state`, {
+    state: 'MEASURING', patient_id: pat || undefined
+  });
+}
+
+function stopMeasuring(id) {
+  console.log('[Fleet UI] Stopping device → IDLE:', id);
+  apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'StopCase' });
+}
+
+function toStandby(id) {
+  // From IDLE: include selected profile so ProfileMetadata is sent
+  // From MEASURING: profile is already active
+  const profSelect = document.getElementById(`prof_${id}`);
+  const profile = profSelect ? profSelect.value : undefined;
+  console.log('[Fleet UI] → Standby device:', id, 'profile:', profile);
+  apiPost(`${API}/api/devices/${id}/state`, {
+    state: 'STANDBY', reason: 'Standby', profile: profile || undefined
+  });
+}
+
+function toIdle(id) {
+  console.log('[Fleet UI] → Idle device:', id);
+  apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'ReturnToIdle' });
+}
+
+function bindPatient(id) {
+  const pat = document.getElementById(`bind_${id}`)?.value;
+  if (!pat) { 
+    toast('⚠ Enter a patient ID'); 
+    return; 
+  }
+  apiPost(`${API}/api/devices/${id}/patient`, { action: 'bind', patient_id: pat });
+}
+
+function releasePatient(id) {
+  apiPost(`${API}/api/devices/${id}/patient`, { action: 'release' });
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────
+console.log('[Fleet UI] Initializing...');
+fetchProfiles();
+
+// Start with 5s initial refresh to give API time to start
+setTimeout(() => {
+  console.log('[Fleet UI] Starting refresh loop (5s interval)');
+  refresh();
+  setInterval(refresh, 5000);  // Increased from 3s to 5s, gives API more time to respond
+}, 1000);
+
+console.log('[Fleet UI] Ready - waiting for API...');
+</script>
+</body>
+</html>

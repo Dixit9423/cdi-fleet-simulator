@@ -1,0 +1,493 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# devices_config.yaml  —  CDI Fleet Simulator Configuration
+#
+# Edit THIS file to change devices, parameters, profiles, or tick values
+# without touching any Python code.
+#
+# Sections:
+#   server          → gRPC target address + mTLS certificate paths
+#   param_catalog   → Master list of all CDI parameters with metadata
+#   profiles        → Named parameter sets (selected for ProfileMetadata)
+#   devices         → 6 simulated CDI Core devices with state & data
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVER CONNECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+server:
+  host: "10.124.204.10" # "10.124.204.10" #"192.168.29.167"
+  port: 9090
+  tls:
+    enabled: true
+    # Relative to user home, or absolute path
+    cert_dir: "~/Downloads/certs 1"
+    ca_cert: "ca.crt"
+    client_cert: "client.crt"
+    client_key: "client-pkcs8.key"
+    server_cert: "server.crt"
+    # Optional: set only when target host does not match cert SAN.
+    # Example: connecting to IP but cert has DNS SAN "localhost"
+    server_name_override: "localhost"
+    # Keepalive is OFF by default to avoid server GOAWAY("too_many_pings").
+    # Uncomment only if your server requires keepalive and allows frequent pings.
+    # keepalive_time_ms: 300000
+    # keepalive_timeout_ms: 20000
+    # keepalive_permit_without_calls: false
+    # Set false to fall back to insecure channel (dev/testing)
+    # When enabled=false, cert files are ignored
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PARAMETER CATALOG
+# ═══════════════════════════════════════════════════════════════════════════════
+# Master definition for every parameter that any profile can reference.
+# Key = param_id (uint32), matches CdiParameterIds.h
+#
+# Fields:
+#   name               → ParamMetadata.param_name
+#   unit               → ParamMetadata.unit
+#   source_personality → ParamMetadata.source_device_personality
+#   alarm_limit        → AlarmLimit { present, low, high }
+#   range              → ParamRange { present, display_low/high, operating_low/high }
+# ─────────────────────────────────────────────────────────────────────────────
+param_catalog:
+
+  # ── Arterial BPM (1-11) ──────────────────────────────────────────────────
+  1:
+    name: "Arterial_pH"
+    unit: ""
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "7.30", high: "7.50" }
+    range: { present: true, display_low: "6.80", display_high: "7.80", operating_low: "6.50", operating_high: "8.00" }
+  2:
+    name: "Arterial_PCO2"
+    unit: "mmHg"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "30", high: "50" }
+    range: { present: true, display_low: "10", display_high: "100", operating_low: "5", operating_high: "150" }
+  3:
+    name: "Arterial_PO2"
+    unit: "mmHg"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "100", high: "500" }
+    range: { present: true, display_low: "0", display_high: "800", operating_low: "0", operating_high: "800" }
+  4:
+    name: "Arterial_SO2_BPM"
+    unit: "%"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "90", high: "100" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+  5:
+    name: "Arterial_Temperature"
+    unit: "°C"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "34.0", high: "38.0" }
+    range: { present: true, display_low: "20", display_high: "45", operating_low: "15", operating_high: "50" }
+  6:
+    name: "Arterial_K"
+    unit: "mmol/L"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "3.5", high: "5.5" }
+    range: { present: true, display_low: "1", display_high: "10", operating_low: "0.5", operating_high: "15" }
+  9:
+    name: "Arterial_HCO3"
+    unit: "mmol/L"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "18", high: "30" }
+    range: { present: true, display_low: "10", display_high: "40", operating_low: "5", operating_high: "50" }
+  10:
+    name: "Arterial_BE"
+    unit: "mmol/L"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "-5", high: "5" }
+    range: { present: true, display_low: "-20", display_high: "20", operating_low: "-30", operating_high: "30" }
+
+  # ── Venous BPM (16-26) ──────────────────────────────────────────────────
+  16:
+    name: "Venous_pH"
+    unit: ""
+    source_personality: "Venous BPM"
+    alarm_limit: { present: true, low: "7.25", high: "7.45" }
+    range: { present: true, display_low: "6.80", display_high: "7.80", operating_low: "6.50", operating_high: "8.00" }
+  17:
+    name: "Venous_PCO2"
+    unit: "mmHg"
+    source_personality: "Venous BPM"
+    alarm_limit: { present: true, low: "35", high: "55" }
+    range: { present: true, display_low: "10", display_high: "100", operating_low: "5", operating_high: "150" }
+  18:
+    name: "Venous_PO2"
+    unit: "mmHg"
+    source_personality: "Venous BPM"
+    alarm_limit: { present: true, low: "30", high: "50" }
+    range: { present: true, display_low: "0", display_high: "200", operating_low: "0", operating_high: "200" }
+  24:
+    name: "Venous_HCO3"
+    unit: "mmol/L"
+    source_personality: "Venous BPM"
+    alarm_limit: { present: true, low: "18", high: "30" }
+    range: { present: true, display_low: "10", display_high: "40", operating_low: "5", operating_high: "50" }
+
+  # ── Arterial H/SAT (41-44) ──────────────────────────────────────────────
+  41:
+    name: "Arterial_Hematocrit"
+    unit: "%"
+    source_personality: "Arterial H/SAT"
+    alarm_limit: { present: true, low: "25", high: "55" }
+    range: { present: true, display_low: "10", display_high: "70", operating_low: "5", operating_high: "75" }
+  42:
+    name: "Arterial_Hemoglobin"
+    unit: "g/dL"
+    source_personality: "Arterial H/SAT"
+    alarm_limit: { present: true, low: "8", high: "18" }
+    range: { present: true, display_low: "5", display_high: "25", operating_low: "3", operating_high: "30" }
+  43:
+    name: "Arterial_SO2"
+    unit: "%"
+    source_personality: "Arterial H/SAT"
+    alarm_limit: { present: true, low: "90", high: "100" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+
+  # ── Venous H/SAT (48-51) ─────────────────────────────────────────────────
+  48:
+    name: "Venous_Hematocrit"
+    unit: "%"
+    source_personality: "Venous H/SAT"
+    alarm_limit: { present: true, low: "25", high: "55" }
+    range: { present: true, display_low: "10", display_high: "70", operating_low: "5", operating_high: "75" }
+  49:
+    name: "Venous_Hemoglobin"
+    unit: "g/dL"
+    source_personality: "Venous H/SAT"
+    alarm_limit: { present: true, low: "7", high: "17" }
+    range: { present: true, display_low: "5", display_high: "25", operating_low: "3", operating_high: "30" }
+  50:
+    name: "Venous_SO2"
+    unit: "%"
+    source_personality: "Venous H/SAT"
+    alarm_limit: { present: true, low: "55", high: "85" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+
+  # ── Flow Sensors (55-59) ─────────────────────────────────────────────────
+  55:
+    name: "Flow_Red"
+    unit: "mL/min"
+    source_personality: "Flow Sensor Red"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "8000", operating_low: "0", operating_high: "10000" }
+  56:
+    name: "Flow_Blue"
+    unit: "mL/min"
+    source_personality: "Flow Sensor Blue"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "8000", operating_low: "0", operating_high: "10000" }
+
+  # ── Cerebral Oximeter (60-65) ────────────────────────────────────────────
+  60:
+    name: "Channel1_RSO2"
+    unit: "%"
+    source_personality: "Cerebral Oximeter Ch1"
+    alarm_limit: { present: true, low: "50", high: "95" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+  61:
+    name: "Channel2_RSO2"
+    unit: "%"
+    source_personality: "Cerebral Oximeter Ch2"
+    alarm_limit: { present: true, low: "50", high: "95" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+
+  # ── Core Calculated (70-79, 88-89) ──────────────────────────────────────
+  70:
+    name: "Consumed_Oxygen_VO2"
+    unit: "mL/min"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: true, low: "150", high: "400" }
+    range: { present: true, display_low: "0", display_high: "800", operating_low: "0", operating_high: "800" }
+  71:
+    name: "Delivered_Oxygen_DO2"
+    unit: "mL/min"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "2000", operating_low: "0", operating_high: "2000" }
+  72:
+    name: "Consumed_Oxygen_Index_VO2I"
+    unit: "mL/min/m2"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: true, low: "100", high: "250" }
+    range: { present: true, display_low: "0", display_high: "500", operating_low: "0", operating_high: "500" }
+  73:
+    name: "Oxygen_Extraction_Ratio_O2ER"
+    unit: "%"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: true, low: "15", high: "40" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+  75:
+    name: "Delivered_Oxygen_Index_DO2I"
+    unit: "mL/min/m2"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: true, low: "280", high: "600" }
+    range: { present: true, display_low: "0", display_high: "1000", operating_low: "0", operating_high: "1000" }
+  76:
+    name: "Oxygen_Consumption_VO2_Indexed"
+    unit: "mL/min/m2"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "500", operating_low: "0", operating_high: "500" }
+  89:
+    name: "DO2I_NADIR"
+    unit: "mL/min/m2"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "1000", operating_low: "0", operating_high: "1000" }
+
+  # ── Manual Values (80-83) ────────────────────────────────────────────────
+  80:
+    name: "Manual_Flow"
+    unit: "mL/min"
+    source_personality: "Manual Entry"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "10000", operating_low: "0", operating_high: "10000" }
+  81:
+    name: "Manual_HGB"
+    unit: "g/dL"
+    source_personality: "Manual Entry"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "25", operating_low: "0", operating_high: "30" }
+  83:
+    name: "Manual_SO2"
+    unit: "%"
+    source_personality: "Manual Entry"
+    alarm_limit: { present: false, low: "", high: "" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROFILES  —  Named parameter-set presets
+# ═══════════════════════════════════════════════════════════════════════════════
+# Each profile specifies:
+#   do2i_threshold  → int mL/min/m2 (sent in ProfileMetadata header)
+#   manual_hgb      → float g/dL
+#   manual_so2      → int %
+#   flow_source     → string (Flow_Red | Flow_Blue | Manual | etc.)
+#   param_ids       → list of param_id from catalog (selected=true)
+# ─────────────────────────────────────────────────────────────────────────────
+profiles:
+  full_bypass:
+    do2i_threshold: 280
+    manual_hgb: 12.5
+    manual_so2: 65
+    flow_source: "Flow_Red"
+    param_ids: [9, 42, 49, 50, 55, 60, 70, 71, 72, 73, 75, 89]
+
+  arterial_venous:
+    do2i_threshold: 300
+    manual_hgb: 13.0
+    manual_so2: 70
+    flow_source: "Flow_Red"
+    param_ids: [1, 2, 3, 9, 42, 43, 16, 17, 49, 50, 55]
+
+  oxygen_delivery:
+    do2i_threshold: 260
+    manual_hgb: 11.0
+    manual_so2: 60
+    flow_source: "Flow_Blue"
+    param_ids: [42, 49, 50, 55, 70, 71, 72, 73, 75, 89]
+
+  cerebral_monitoring:
+    do2i_threshold: 280
+    manual_hgb: 12.0
+    manual_so2: 65
+    flow_source: "Flow_Red"
+    param_ids: [42, 50, 55, 60, 61, 71, 75, 89]
+
+  minimal:
+    do2i_threshold: 300
+    manual_hgb: 14.0
+    manual_so2: 72
+    flow_source: "Flow_Red"
+    param_ids: [42, 50, 55, 71, 75]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEVICES  —  6 simulated CDI Core devices
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fields:
+#   serial           → Core serial number (CDI-<serial> = device_id)
+#   sw_version       → software version string
+#   site             → location label (informational)
+#   initial_state    → MEASURING | IDLE | STANDBY  (state after announcement)
+#   patient_id       → patient bound at startup (null = no patient)
+#   profile          → profile name from `profiles` section (null = no profile)
+#   probes           → map of personality → serial (for source_device_id)
+#   tick_data        → param_id → [value1, value2, ...] cycling list
+#                      Only needed for MEASURING devices; values are strings.
+# ─────────────────────────────────────────────────────────────────────────────
+devices:
+
+  # ── Device 1: Full Bypass Surgery (default IDLE) ────────────────────────
+  - serial: "C1234567"
+    sw_version: "1.0.0"
+    site: "OR-1"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":          "B1234567"
+      "Venous BPM":            "V1234567"
+      "Arterial H/SAT":        "H1234567"
+      "Venous H/SAT":          "VH123456"
+      "Flow Sensor Red":       "F-R12345"
+      "Cerebral Oximeter Ch1": "C1234567"
+      "Core Calculated":       "C1234567"
+    tick_data:
+      9:  ["24.1", "24.0", "24.05", "24.1", "24.2", "23.9", "24.15", "24.0"]
+      42: ["12.8", "12.7", "12.75", "12.8", "12.9", "12.85", "12.7", "12.8"]
+      49: ["12.0", "11.9", "12.05", "12.1", "12.0", "11.95", "12.1", "12.0"]
+      50: ["68.5", "69.0", "68.8", "69.2", "68.6", "69.1", "68.9", "69.0"]
+      55: ["4900", "5000", "5050", "5100", "5100", "4950", "5000", "5050"]
+      60: ["72.0", "72.5", "71.8", "72.2", "72.8", "72.1", "72.4", "72.0"]
+      70: ["245", "248", "250", "252", "249", "247", "251", "248"]
+      71: ["560", "563", "565", "567", "569", "564", "566", "562"]
+      72: ["138", "140", "141", "142", "140", "139", "141", "140"]
+      73: ["28.5", "28.8", "29.0", "29.2", "28.7", "28.9", "29.1", "28.8"]
+      75: ["315", "318", "320", "322", "319", "317", "321", "318"]
+      89: ["310", "310", "310", "310", "310", "310", "310", "310"]
+
+  # ── Device 2: Arterial/Venous Focus (default IDLE) ──────────────────────
+  - serial: "C2345678"
+    sw_version: "1.0.0"
+    site: "OR-2"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":    "B2345678"
+      "Venous BPM":      "V2345678"
+      "Arterial H/SAT":  "H2345678"
+      "Venous H/SAT":    "VH234567"
+      "Flow Sensor Red":  "F-R23456"
+      "Core Calculated":  "C2345678"
+    tick_data:
+      1:  ["7.38", "7.39", "7.37", "7.38", "7.40", "7.39"]
+      2:  ["40.1", "39.8", "40.3", "40.0", "39.5", "40.2"]
+      3:  ["250", "255", "248", "260", "252", "258"]
+      9:  ["22.5", "22.3", "22.6", "22.4", "22.7", "22.5"]
+      42: ["13.5", "13.4", "13.6", "13.5", "13.3", "13.5"]
+      43: ["96.5", "96.8", "96.3", "96.7", "96.5", "96.6"]
+      16: ["7.34", "7.35", "7.33", "7.34", "7.36", "7.35"]
+      17: ["45.2", "44.8", "45.5", "45.0", "44.5", "45.3"]
+      49: ["12.8", "12.7", "12.9", "12.8", "12.6", "12.8"]
+      50: ["65.0", "65.5", "64.8", "65.2", "65.8", "65.0"]
+      55: ["4500", "4550", "4480", "4520", "4580", "4500"]
+
+  # ── Device 3: Oxygen Delivery Focus (default IDLE) ──────────────────────
+  - serial: "C3456789"
+    sw_version: "1.0.0"
+    site: "OR-3"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial H/SAT":   "H3456789"
+      "Venous H/SAT":     "VH345678"
+      "Flow Sensor Blue":  "F-B34567"
+      "Core Calculated":   "C3456789"
+    tick_data:
+      42: ["11.2", "11.1", "11.3", "11.2", "11.0", "11.2", "11.4", "11.1"]
+      49: ["10.5", "10.4", "10.6", "10.5", "10.3", "10.5", "10.7", "10.4"]
+      50: ["62.0", "62.5", "61.8", "62.2", "62.8", "62.0", "61.5", "62.5"]
+      55: ["3800", "3850", "3780", "3820", "3880", "3800", "3750", "3850"]
+      70: ["210", "215", "208", "212", "218", "211", "207", "214"]
+      71: ["480", "485", "478", "482", "488", "481", "476", "484"]
+      72: ["118", "120", "117", "119", "122", "118", "116", "120"]
+      73: ["32.0", "32.5", "31.8", "32.2", "32.8", "32.0", "31.5", "32.5"]
+      75: ["270", "273", "268", "271", "275", "270", "266", "273"]
+      89: ["265", "265", "265", "265", "265", "265", "265", "265"]
+
+  # ── Device 4: Idle — Ready for new case (IDLE) ──────────────────────────
+  - serial: "C4567890"
+    sw_version: "1.0.0"
+    site: "ICU-1"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":    "B4567890"
+      "Venous BPM":      "V4567890"
+      "Arterial H/SAT":  "H4567890"
+      "Core Calculated":  "C4567890"
+    tick_data: {}
+
+  # ── Device 5: Standby capable (default IDLE) ─────────────────────────────
+  - serial: "C5678901"
+    sw_version: "1.0.0"
+    site: "ICU-2"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial H/SAT":   "H5678901"
+      "Venous H/SAT":     "VH567890"
+      "Flow Sensor Red":  "F-R56789"
+      "Core Calculated":   "C5678901"
+    tick_data: {}
+
+  # ── Device 6: Idle — Previously used, awaiting next case (IDLE) ─────────
+  - serial: "C6789012"
+    sw_version: "0.9.8"
+    site: "OR-4"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":         "B6789012"
+      "Arterial H/SAT":       "H6789012"
+      "Venous H/SAT":         "VH678901"
+      "Flow Sensor Red":      "F-R67890"
+      "Cerebral Oximeter Ch1": "C6789012"
+      "Core Calculated":       "C6789012"
+    tick_data: {}
+
+  - serial: "C6789013"
+    sw_version: "0.9.8"
+    site: "OR-4"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":         "B6789012"
+      "Arterial H/SAT":       "H6789012"
+      "Venous H/SAT":         "VH678901"
+      "Flow Sensor Red":      "F-R67890"
+      "Cerebral Oximeter Ch1": "C6789012"
+      "Core Calculated":       "C6789012"
+    tick_data: {}
+
+  - serial: "C6789014"
+    sw_version: "01.03.1111"
+    site: "OR-4"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":         "B6789012"
+      "Arterial H/SAT":       "H6789012"
+      "Venous H/SAT":         "VH678901"
+      "Flow Sensor Red":      "F-R67890"
+      "Cerebral Oximeter Ch1": "C6789012"
+      "Core Calculated":       "C6789012"
+    tick_data: {}
+
+  - serial: "C6789012"
+    sw_version: "0.9.8"
+    site: "OR-4"
+    initial_state: "IDLE"
+    patient_id: null
+    profile: null
+    probes:
+      "Arterial BPM":         "B6789012"
+      "Arterial H/SAT":       "H6789012"
+      "Venous H/SAT":         "VH678901"
+      "Flow Sensor Red":      "F-R67890"
+      "Cerebral Oximeter Ch1": "C6789012"
+      "Core Calculated":       "C6789012"
+    tick_data: {}
