@@ -19,24 +19,37 @@ import os
 import sys
 import time
 
-# ── Resolve proto path before any fleet_sim import ───────────────────────
-_this_dir = os.path.dirname(os.path.abspath(__file__))
-_proto_dir = os.path.normpath(os.path.join(_this_dir, "..", "src", "Telemetry", "proto"))
-if _proto_dir not in sys.path:
-    sys.path.insert(0, _proto_dir)
+# ── Resolve paths (PyInstaller-aware) ────────────────────────────────────
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller bundle
+    _this_dir = os.path.dirname(sys.executable)
+    _bundle_dir = sys._MEIPASS
+    # Proto stubs are bundled at top-level of _MEIPASS
+    if _bundle_dir not in sys.path:
+        sys.path.insert(0, _bundle_dir)
+else:
+    # Running from source
+    _this_dir = os.path.dirname(os.path.abspath(__file__))
+    _proto_dir = os.path.normpath(os.path.join(_this_dir, "..", "src", "Telemetry", "proto"))
+    if _proto_dir not in sys.path:
+        sys.path.insert(0, _proto_dir)
 
 # Verify proto stubs exist
 try:
     import telemetry_pb2
     import telemetry_pb2_grpc
 except ImportError:
-    print(f"[Fleet] ERROR: Proto stubs not found in {_proto_dir}")
-    print(f"[Fleet] Generate them with:")
-    print(f"  python -m grpc_tools.protoc "
-          f"-I{_proto_dir} "
-          f"--python_out={_proto_dir} "
-          f"--grpc_python_out={_proto_dir} "
-          f"telemetry.proto")
+    if getattr(sys, 'frozen', False):
+        print("[Fleet] ERROR: Proto stubs not found in bundled executable.")
+        print("[Fleet] This is a packaging bug — rebuild with: pyinstaller fleet_simulator.spec")
+    else:
+        print(f"[Fleet] ERROR: Proto stubs not found in {_proto_dir}")
+        print(f"[Fleet] Generate them with:")
+        print(f"  python -m grpc_tools.protoc "
+              f"-I{_proto_dir} "
+              f"--python_out={_proto_dir} "
+              f"--grpc_python_out={_proto_dir} "
+              f"telemetry.proto")
     sys.exit(1)
 
 from fleet_sim.config import load_config
@@ -51,7 +64,7 @@ def main():
     parser.add_argument(
         "--config", "-c",
         default=os.path.join(_this_dir, "devices_config.yaml"),
-        help="Path to YAML config (default: devices_config.yaml)",
+        help="Path to YAML config (default: devices_config.yaml beside the executable)",
     )
     parser.add_argument(
         "--insecure",

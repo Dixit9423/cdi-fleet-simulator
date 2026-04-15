@@ -17,6 +17,7 @@ Endpoints:
 """
 
 import os
+import sys
 import threading
 import time
 import uvicorn
@@ -58,11 +59,15 @@ app.add_middleware(
 
 @app.get("/", response_class=HTMLResponse)
 def control_panel_ui():
-    html_path = os.path.join(os.path.dirname(__file__), "templates", "control_panel.html")
+    # PyInstaller-aware: check _MEIPASS first, then __file__ relative
+    if getattr(sys, 'frozen', False):
+        html_path = os.path.join(sys._MEIPASS, "fleet_sim", "templates", "control_panel.html")
+    else:
+        html_path = os.path.join(os.path.dirname(__file__), "templates", "control_panel.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
             return f.read()
-    return "<h1>Control Panel HTML not found</h1>"
+    return f"<h1>Control Panel HTML not found at {html_path}</h1>"
 
 
 # ── API: Fleet ───────────────────────────────────────────────────────────────
