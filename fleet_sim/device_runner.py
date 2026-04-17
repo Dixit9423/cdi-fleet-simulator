@@ -432,45 +432,29 @@ class DeviceRunner(threading.Thread):
     def run(self):
         """Thread entry: connect, announce, enter state loop."""
         try:
-            self._connect()
-            if not self.ds.connected:
+            # Step 1: Connect + announce + initial state
+            if not self._start_session(send_initial_state=True):
                 return
 
-            # Step 1: Announce
-            msg = self._build_announcement()
-            if not self._send_and_wait_ack(msg, "DeviceAnnouncement"):
-                self._set_error("Announcement failed")
-                return
-            time.sleep(0.2)
-
-            # Step 2: Initial state setup - send CoreStateEvent for all states
-            initial = self.ds.current_state
-            if initial == "MEASURING" and self.ds.profile_name:
-                if not self._transition_to_measuring(
-                    self.ds.profile_name, self.ds.patient_id
-                ):
-                    self._set_error("Initial MEASURING transition failed")
-                    return
-            elif initial == "STANDBY":
-                if not self._transition_to_standby("InitialStandby"):
-                    self._set_error("Initial STANDBY transition failed")
-                    return
-            elif initial == "IDLE":
-                # Send initial IDLE state event
-                msg = self._build_state_event("IDLE", "Startup")
-                if not self._send_and_wait_ack(msg, "CoreStateEvent(IDLE, Startup)"):
-                    self._set_error("Initial IDLE state event failed")
-                    return
-
-            self._log(f"Ready  state={self.ds.current_state}")
-
-            # Step 3: Start background response reader
-            self._start_response_reader()
-
-            # Step 4: Main loop — NEVER blocked by server I/O
+            # Step 2: Main loop — NEVER blocked by server I/O
             last_tick_time = 0.0
+            next_reconnect_time = 0.0
 
-            while not self.stop_event.is_set() and self._stream_alive:
+            while not self.stop_event.is_set():
+                # If server stream dropped, keep thread alive and reconnect.
+                if not self._stream_alive:
+                    now = time.time()
+                    if now >= next_reconnect_time:
+                        self._log("Stream dropped, attempting reconnect...")
+                        if self._start_session(send_initial_state=False):
+                            self._log("Reconnect successful")
+                            last_tick_time = 0.0
+                        else:
+                            self._log("Reconnect failed, retrying in 2s")
+                            next_reconnect_time = now + 2.0
+                    self.stop_event.wait(0.2)
+                    continue
+
                 # ── PRIORITY: drain ALL queued commands immediately ───
                 while not self.stop_event.is_set():
                     try:
@@ -504,8 +488,8 @@ class DeviceRunner(threading.Thread):
                             f"DataTick(seq={msg.measurement_data_tick.seq_no}, [{vals_str}])"
                         )
                         if not ok:
-                            self._set_error("DataTick send failed (stream dead)")
-                            break
+                            self._set_error("DataTick send failed (stream dead); waiting for reconnect")
+                            # Don't exit thread. Reconnect path at top of loop handles recovery.
                         last_tick_time = time.time()
 
                     # Short sleep — commands checked every 100ms
@@ -521,6 +505,45 @@ class DeviceRunner(threading.Thread):
         finally:
             self._disconnect()
 
+    def _start_session(self, send_initial_state: bool) -> bool:
+        """Establish stream, start response reader, announce and (optionally) send initial state."""
+        self._connect()
+        if not self.ds.connected:
+            return False
+
+        # Start response reader BEFORE sending anything, so responses are always consumed.
+        self._start_response_reader()
+
+        # Announce
+        msg = self._build_announcement()
+        if not self._send_and_wait_ack(msg, "DeviceAnnouncement"):
+            self._set_error("Announcement failed")
+            return False
+        time.sleep(0.2)
+
+        if not send_initial_state:
+            return True
+
+        # Initial state setup - send CoreStateEvent for all states
+        initial = self.ds.current_state
+        if initial == "MEASURING" and self.ds.profile_name:
+            if not self._transition_to_measuring(self.ds.profile_name, self.ds.patient_id):
+                self._set_error("Initial MEASURING transition failed")
+                return False
+        elif initial == "STANDBY":
+            if not self._transition_to_standby("InitialStandby"):
+                self._set_error("Initial STANDBY transition failed")
+                return False
+        else:
+            # Default to IDLE startup event (including unknown/missing initial state)
+            msg = self._build_state_event("IDLE", "Startup")
+            if not self._send_and_wait_ack(msg, "CoreStateEvent(IDLE, Startup)"):
+                self._set_error("Initial IDLE state event failed")
+                return False
+
+        self._log(f"Ready  state={self.ds.current_state}")
+        return True
+
     # ── Helpers ───────────────────────────────────────────────────────────
 
     def _connect(self):
@@ -535,8 +558,11 @@ class DeviceRunner(threading.Thread):
 
             self.stub = telemetry_pb2_grpc.TelemetryServiceStub(self.channel)
             self.stream = self.stub.TelemetrySession(self._request_generator())
+            self._stream_alive = True
+            self._ack_event.clear()
             with self.ds.lock:
                 self.ds.connected = True
+                self.ds.error = None
             self._log("Connected ✓")
         except Exception as e:
             self._set_error(f"Connection failed: {e}")

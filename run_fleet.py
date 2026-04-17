@@ -58,6 +58,7 @@ from fleet_sim.control_app import start_control_panel
 
 
 def main():
+    default_no_persist = bool(getattr(sys, 'frozen', False))
     parser = argparse.ArgumentParser(
         description="CDI Core Fleet Simulator — 6-device mTLS gRPC client"
     )
@@ -90,7 +91,8 @@ def main():
     parser.add_argument(
         "--no-persist",
         action="store_true",
-        help="Disable saving/loading runtime state",
+        default=default_no_persist,
+        help="Disable saving/loading runtime state (default: ON for executable, OFF for source)",
     )
     args = parser.parse_args()
 
