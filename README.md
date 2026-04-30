@@ -1,169 +1,186 @@
-# CDI Core – Telemetry gRPC Client
+# CDI Core Fleet Simulator
 
-Standalone C++ executable (`Core`) that connects to the Device Manager Java
-gRPC server and runs the full telemetry flow defined in
-`Telemetry_Flow_And_Metadata.md` (section 1 sequence diagram).
+This directory contains a Python-based, config-driven fleet simulator for CDI Core telemetry.
+
+It simulates multiple CDI Core devices, each with its own gRPC bidirectional `TelemetrySession`, and includes a FastAPI control panel for runtime operations.
 
 ---
 
-## Directory layout
+## Overview
 
-```
+- Simulates 6 CDI Core devices by default
+- Supports mTLS 1.3 and insecure mode
+- Uses YAML config for devices, profiles, and parameter metadata
+- Includes runtime control panel (state changes, patient bind/release, profile switch, tick updates)
+- Preserves legacy clients (`CoreClientReal.py`, `CoreClientDemo.py`) for reference
+
+---
+
+## Directory structure
+
+```text
 TelemetryGrpcClient/
-├── CMakeLists.txt      ← build definition; runs protoc at configure time
-├── MockData.h          ← hardcoded device / param / tick data (no CDI SDK needed)
-├── CoreClient.h        ← CoreClient class declaration
-├── CoreClient.cpp      ← CoreClient implementation
-├── main.cpp            ← 7-step telemetry flow + CLI args
-└── README.md           ← this file
-
-Proto source (read-only, shared):
-  ../src/Telemetry/proto/telemetry.proto
-
-Generated files (created in the build directory, not checked in):
-  <build>/generated/telemetry.pb.h
-  <build>/generated/telemetry.pb.cc
-  <build>/generated/telemetry.grpc.pb.h
-  <build>/generated/telemetry.grpc.pb.cc
+├── run_fleet.py               # Entry point
+├── devices_config.yaml        # Main simulator config
+├── generate_certs.py          # Self-signed cert generator
+├── requirements_fleet.txt     # Python dependencies
+├── fleet_sim/
+│   ├── config.py
+│   ├── mtls.py
+│   ├── state_store.py
+│   ├── device_runner.py
+│   ├── fleet_manager.py
+│   ├── control_app.py
+│   └── templates/control_panel.html
+├── CoreClientReal.py          # Legacy single-device client
+├── CoreClientDemo.py          # Legacy demo client
+└── README.md
 ```
+
+Proto stubs are imported from:
+
+- `../src/Telemetry/proto/telemetry.proto`
 
 ---
 
 ## Prerequisites
 
-| Tool | Version | Install (Ubuntu / Debian) |
-|------|---------|---------------------------|
-| CMake | ≥ 3.15 | `apt install cmake` |
-| g++ | ≥ 9 (C++17) | `apt install g++` |
-| protoc | ≥ 3.21 | `apt install protobuf-compiler` |
-| grpc_cpp_plugin | matches protoc | `apt install protobuf-compiler-grpc` |
-| libgrpc++-dev | ≥ 1.50 | `apt install libgrpc++-dev` |
-| libprotobuf-dev | ≥ 3.21 | `apt install libprotobuf-dev` |
+- Python 3.10+
+- `pip`
+- Access to telemetry proto stubs (`telemetry_pb2.py`, `telemetry_pb2_grpc.py`)
 
-> **Note:** on some distros the packages are split differently.  
-> A reliable cross-platform route is **vcpkg**:
-> ```bash
-> vcpkg install grpc protobuf
-> # then add  -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake
-> ```
-
----
-
-## Build
+Install dependencies:
 
 ```bash
-# From the repo root (adjust the path as needed)
-cd Linux/CdiCoreMain/TelemetryGrpcClient
-
-mkdir build && cd build
-
-# Standard system-installed gRPC / protobuf
-cmake ..
-
-# --- OR with vcpkg ---
-# cmake .. -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake
-
-cmake --build . -j$(nproc)
+pip install -r requirements_fleet.txt
 ```
-
-The CMake configure step automatically runs `protoc` to generate
-`generated/telemetry.pb.*` and `generated/telemetry.grpc.pb.*` inside the
-build directory.  The final binary is `build/Core`.
 
 ---
 
-## Run
+## Quick start
+
+From `Linux/CdiCoreMain/TelemetryGrpcClient`:
 
 ```bash
-# Connect to the Java Device Manager on the default port (localhost:5555)
-./build/Core
+# 1) Install dependencies
+pip install -r requirements_fleet.txt
 
-# Custom host / port / tick count
-./build/Core --host 192.168.1.10 --port 5555 --ticks 10
+# 2) Generate mTLS certificates (optional, for secure mode)
+python generate_certs.py
 
-# Show all options
-./build/Core --help
+# 3) Run simulator
+python run_fleet.py
 ```
 
-### CLI flags
+Open control panel:
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--host` | `-h` | `localhost` | Device Manager hostname or IP |
-| `--port` | `-p` | `5555` | Device Manager gRPC port |
-| `--ticks` | `-n` | `5` | Number of DataTick messages to send |
-
----
-
-## Telemetry flow
-
-```
-Core (C++)                                    Device Manager (Java)
-────────────────────────────────────────────────────────────────────
-Connect InsecureChannel
-Open TelemetrySession (bidirectional stream)
-
-→  DeviceAnnouncement                       ←  ManagerAck(DeviceAnnouncement)
-→  ProfileMetadata (10 params)              ←  ManagerAck(ProfileMetadata)
-                                            ←  [StreamConfig] (optional)
-                                            ←  [PatientBind]  (optional, DM-initiated)
-→  CoreStateEvent(MEASURING, "StartCase")   ←  ManagerAck(CoreStateEvent)
-→  DataTick seq=3001  (1 s sleep)           ←  ManagerAck(DataTick)
-→  DataTick seq=3002  (1 s sleep)           ←  ManagerAck(DataTick)
-   … × N ticks …
-→  CoreStateEvent(IDLE, "StopCase")         ←  ManagerAck(CoreStateEvent)
-                                            ←  [PatientRelease] (optional)
-WritesDone → Finish (stream closed)
+```text
+http://localhost:8090
 ```
 
 ---
 
-## Mock data
-
-All values come from the JSON samples in `Telemetry_Flow_And_Metadata.md`:
-
-- **Device**: serial `C1234567`, device-id `CDI-C1234567`, sw `1.0.0`
-- **Profile**: 10 parameters (param IDs 9, 42, 49, 50, 55, 60, 71, 73, 75, 89)  
-  with alarm limits, ranges, and source device serials.
-- **DataTick values**: 4 params (IDs 9, 42, 55, 71) with 5 sample rows;  
-  rows cycle automatically when `--ticks` > 5.
-- **Manual values**: HGB = 12.5 g/dL, SO2 = 65 %, DO2i threshold = 280 mL/min/m²
-
----
-
-## Starting the Java Device Manager test server
-
-The Python reference server at `telemetry_server.py` (repo root) can stand in
-for the Java server during development:
+## Run options
 
 ```bash
-# From the repo root
-pip install grpcio grpcio-tools
-python telemetry_server.py          # listens on 0.0.0.0:5555 by default
+python run_fleet.py --help
+python run_fleet.py --config my_config.yaml
+python run_fleet.py --control-port 9000
+python run_fleet.py --insecure
+python run_fleet.py --no-control
+python run_fleet.py --no-persist
 ```
 
-Then in a separate terminal:
+### Main flags
 
-```bash
-./build/Core --ticks 5
-```
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config`, `-c` | `devices_config.yaml` | YAML configuration path |
+| `--insecure` | `False` | Disable TLS and use insecure channel |
+| `--control-port` | `8090` | Control panel HTTP port |
+| `--no-control` | `False` | Disable control panel |
+| `--state-file` | `.fleet_runtime_state.json` | Runtime state file |
+| `--no-persist` | Source: OFF, EXE: ON | Disable runtime state persistence |
 
 ---
 
-## Security note
+## Control panel API
 
-The client uses `grpc::InsecureChannelCredentials()` by default, which is
-correct for local development against the Java/Python test server.
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/` | Web UI |
+| GET | `/api/fleet` | All devices |
+| GET | `/api/fleet/summary` | Fleet KPIs |
+| GET | `/api/profiles` | Profiles |
+| GET | `/api/devices/{id}` | Single device |
+| POST | `/api/devices/{id}/state` | Change state |
+| POST | `/api/devices/{id}/patient` | Bind/release patient |
+| POST | `/api/devices/{id}/profile` | Switch profile |
+| POST | `/api/devices/{id}/tick` | Update tick values |
 
-For production mTLS (matching `GrpcTelemetryTransport.cpp`), replace the
-channel creation in `CoreClient::Connect()` with:
+---
 
-```cpp
-grpc::SslCredentialsOptions opts;
-opts.pem_root_certs   = ReadFile(std::getenv("CDI_TELEMETRY_CA_CERT"));
-opts.pem_cert_chain   = ReadFile(std::getenv("CDI_TELEMETRY_CLIENT_CERT"));
-opts.pem_private_key  = ReadFile(std::getenv("CDI_TELEMETRY_CLIENT_KEY"));
-m_channel = grpc::CreateChannel(
-    m_serverAddress,
-    grpc::SslCredentials(opts));
-```
+## Telemetry behavior per device
+
+Each device runner follows this sequence:
+
+1. Connect and open stream
+2. Send `DeviceAnnouncement`
+3. Send startup `CoreStateEvent` (including `IDLE` startup event)
+4. If measuring: send `ProfileMetadata`, then `DataTick` at 1-second cadence
+5. Process runtime commands from control panel
+6. On shutdown: send `CoreStateEvent(IDLE)` and close stream
+
+---
+
+## Configuration notes
+
+Configure everything in `devices_config.yaml`:
+
+- Server host/port
+- TLS cert paths
+- Device list and startup states
+- Profiles and parameter IDs
+- Parameter metadata (units, limits, ranges)
+- Per-device tick value sequences
+
+This enables adding profiles, parameters, or devices without code changes.
+
+---
+
+## mTLS notes
+
+Example cert bundle location used by tooling:
+
+- `~/Downloads/certs 1`
+
+Typical files:
+
+- `ca.crt`
+- `client.crt`
+- `client-pkcs8.key`
+- `server.crt`
+- `server.key`
+
+If connecting by IP address, ensure the server certificate SAN includes that IP, or set `tls.server_name_override` to a SAN DNS name.
+
+---
+
+## Troubleshooting
+
+| Issue | Action |
+|------|--------|
+| Proto stubs not found | Generate with `python -m grpc_tools.protoc ...` as shown by runtime error |
+| Cert file not found | Run `python generate_certs.py` or fix `cert_dir` in YAML |
+| Channel not ready | Confirm server is running; try `--insecure` for local tests |
+| `too_many_pings` GOAWAY | Keepalive is disabled by default; restart old clients |
+| Control panel port busy | Use `--control-port` |
+| `Import error: fleet_sim` | Run from `TelemetryGrpcClient/` directory |
+
+---
+
+## Related docs
+
+- `FLEET_SIMULATOR_SUMMARY.md` (detailed architecture and roadmap)
+- `FIXES_APPLIED.md` (recent UI and reliability fixes)
+
