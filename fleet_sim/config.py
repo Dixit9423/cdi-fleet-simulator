@@ -56,6 +56,8 @@ def load_config(config_path: str) -> dict:
         pdef.setdefault("manual_so2", 65)
         pdef.setdefault("flow_source", "Flow_Red")
         pdef["param_ids"] = [int(x) for x in pdef.get("param_ids", [])]
+        pdef["metadata_param_ids"] = [int(x) for x in pdef.get("metadata_param_ids", pdef["param_ids"])]
+        pdef["selected_param_ids"] = [int(x) for x in pdef.get("selected_param_ids", pdef["param_ids"])]
 
     # ── Devices ──────────────────────────────────────────────────────────
     devices = cfg.get("devices", [])

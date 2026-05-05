@@ -15,8 +15,11 @@
 # SERVER CONNECTION
 # ═══════════════════════════════════════════════════════════════════════════════
 server:
-  host: "10.124.204.10" # "10.124.204.10" #"192.168.29.167"
-  port: 9090
+  host: 10.124.204.36 #"192.168.29.167" # "10.124.204.10" #"192.168.29.167"
+  port: 5555
+  # DataTick cadence controls (used by simulator thread scheduler)
+  tick_interval_sec: 1.0
+  tick_jitter_ms: 180
   tls:
     enabled: true
     # Relative to user home, or absolute path
@@ -59,11 +62,11 @@ param_catalog:
     alarm_limit: { present: true, low: "7.30", high: "7.50" }
     range: { present: true, display_low: "6.80", display_high: "7.80", operating_low: "6.50", operating_high: "8.00" }
   2:
-    name: "Arterial_PCO2"
-    unit: "mmHg"
+    name: "pH"
+    unit: ""
     source_personality: "Arterial BPM"
-    alarm_limit: { present: true, low: "30", high: "50" }
-    range: { present: true, display_low: "10", display_high: "100", operating_low: "5", operating_high: "150" }
+    alarm_limit: { present: true, low: "7.30", high: "7.50" }
+    range: { present: true, display_low: "6.80", display_high: "7.80", operating_low: "6.50", operating_high: "8.00" }
   3:
     name: "Arterial_PO2"
     unit: "mmHg"
@@ -71,11 +74,11 @@ param_catalog:
     alarm_limit: { present: true, low: "100", high: "500" }
     range: { present: true, display_low: "0", display_high: "800", operating_low: "0", operating_high: "800" }
   4:
-    name: "Arterial_SO2_BPM"
-    unit: "%"
+    name: "pCO2"
+    unit: "mmHg"
     source_personality: "Arterial BPM"
-    alarm_limit: { present: true, low: "90", high: "100" }
-    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+    alarm_limit: { present: true, low: "30", high: "50" }
+    range: { present: true, display_low: "10", display_high: "100", operating_low: "5", operating_high: "150" }
   5:
     name: "Arterial_Temperature"
     unit: "°C"
@@ -83,23 +86,35 @@ param_catalog:
     alarm_limit: { present: true, low: "34.0", high: "38.0" }
     range: { present: true, display_low: "20", display_high: "45", operating_low: "15", operating_high: "50" }
   6:
-    name: "Arterial_K"
-    unit: "mmol/L"
+    name: "pO2"
+    unit: "mmHg"
     source_personality: "Arterial BPM"
-    alarm_limit: { present: true, low: "3.5", high: "5.5" }
-    range: { present: true, display_low: "1", display_high: "10", operating_low: "0.5", operating_high: "15" }
+    alarm_limit: { present: true, low: "100", high: "500" }
+    range: { present: true, display_low: "0", display_high: "800", operating_low: "0", operating_high: "800" }
+  8:
+    name: "SO2"
+    unit: "Calc. %"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "90", high: "100" }
+    range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
   9:
-    name: "Arterial_HCO3"
-    unit: "mmol/L"
+    name: "HCO3"
+    unit: "mEq/L"
     source_personality: "Arterial BPM"
     alarm_limit: { present: true, low: "18", high: "30" }
     range: { present: true, display_low: "10", display_high: "40", operating_low: "5", operating_high: "50" }
   10:
-    name: "Arterial_BE"
+    name: "K+"
     unit: "mmol/L"
     source_personality: "Arterial BPM"
-    alarm_limit: { present: true, low: "-5", high: "5" }
-    range: { present: true, display_low: "-20", display_high: "20", operating_low: "-30", operating_high: "30" }
+    alarm_limit: { present: true, low: "3.5", high: "5.5" }
+    range: { present: true, display_low: "1", display_high: "10", operating_low: "0.5", operating_high: "15" }
+  11:
+    name: "S. Temp"
+    unit: "C"
+    source_personality: "Arterial BPM"
+    alarm_limit: { present: true, low: "34.0", high: "38.0" }
+    range: { present: true, display_low: "20", display_high: "45", operating_low: "15", operating_high: "50" }
 
   # ── Venous BPM (16-26) ──────────────────────────────────────────────────
   16:
@@ -149,21 +164,21 @@ param_catalog:
 
   # ── Venous H/SAT (48-51) ─────────────────────────────────────────────────
   48:
-    name: "Venous_Hematocrit"
+    name: "HCT"
     unit: "%"
-    source_personality: "Venous H/SAT"
+    source_personality: "Arterial H/SAT"
     alarm_limit: { present: true, low: "25", high: "55" }
     range: { present: true, display_low: "10", display_high: "70", operating_low: "5", operating_high: "75" }
   49:
-    name: "Venous_Hemoglobin"
-    unit: "g/dL"
-    source_personality: "Venous H/SAT"
+    name: "Hgb"
+    unit: "g/dl"
+    source_personality: "Arterial H/SAT"
     alarm_limit: { present: true, low: "7", high: "17" }
     range: { present: true, display_low: "5", display_high: "25", operating_low: "3", operating_high: "30" }
   50:
-    name: "Venous_SO2"
+    name: "SO2"
     unit: "%"
-    source_personality: "Venous H/SAT"
+    source_personality: "Arterial H/SAT"
     alarm_limit: { present: true, low: "55", high: "85" }
     range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
 
@@ -197,38 +212,38 @@ param_catalog:
 
   # ── Core Calculated (70-79, 88-89) ──────────────────────────────────────
   70:
-    name: "Consumed_Oxygen_VO2"
+    name: "VO2"
     unit: "mL/min"
     source_personality: "Core Calculated"
     alarm_limit: { present: true, low: "150", high: "400" }
     range: { present: true, display_low: "0", display_high: "800", operating_low: "0", operating_high: "800" }
   71:
-    name: "Delivered_Oxygen_DO2"
+    name: "DO2"
     unit: "mL/min"
     source_personality: "Core Calculated"
     alarm_limit: { present: false, low: "", high: "" }
     range: { present: true, display_low: "0", display_high: "2000", operating_low: "0", operating_high: "2000" }
-  72:
-    name: "Consumed_Oxygen_Index_VO2I"
-    unit: "mL/min/m2"
-    source_personality: "Core Calculated"
-    alarm_limit: { present: true, low: "100", high: "250" }
-    range: { present: true, display_low: "0", display_high: "500", operating_low: "0", operating_high: "500" }
   73:
-    name: "Oxygen_Extraction_Ratio_O2ER"
+    name: "O2ER"
     unit: "%"
     source_personality: "Core Calculated"
     alarm_limit: { present: true, low: "15", high: "40" }
     range: { present: true, display_low: "0", display_high: "100", operating_low: "0", operating_high: "100" }
+  74:
+    name: "VO2I"
+    unit: "mL/mn/m2"
+    source_personality: "Core Calculated"
+    alarm_limit: { present: true, low: "100", high: "250" }
+    range: { present: true, display_low: "0", display_high: "500", operating_low: "0", operating_high: "500" }
   75:
-    name: "Delivered_Oxygen_Index_DO2I"
-    unit: "mL/min/m2"
+    name: "DO2I"
+    unit: "mL/mn/m2"
     source_personality: "Core Calculated"
     alarm_limit: { present: true, low: "280", high: "600" }
     range: { present: true, display_low: "0", display_high: "1000", operating_low: "0", operating_high: "1000" }
   76:
-    name: "Oxygen_Consumption_VO2_Indexed"
-    unit: "mL/min/m2"
+    name: "BE"
+    unit: "mEq/L"
     source_personality: "Core Calculated"
     alarm_limit: { present: false, low: "", high: "" }
     range: { present: true, display_low: "0", display_high: "500", operating_low: "0", operating_high: "500" }
@@ -276,7 +291,8 @@ profiles:
     manual_hgb: 12.5
     manual_so2: 65
     flow_source: "Flow_Red"
-    param_ids: [9, 42, 49, 50, 55, 60, 70, 71, 72, 73, 75, 89]
+    param_ids: [76, 70, 74, 71, 75, 73, 9, 2, 4, 6, 10, 8, 11, 48, 49, 50]
+    selected_param_ids: [76, 70, 74, 71, 75, 73, 9]
 
   arterial_venous:
     do2i_threshold: 300
@@ -331,26 +347,30 @@ devices:
     patient_id: null
     profile: null
     probes:
-      "Arterial BPM":          "B1234567"
+      "Arterial BPM":          "B0050034"
       "Venous BPM":            "V1234567"
-      "Arterial H/SAT":        "H1234567"
+      "Arterial H/SAT":        "H0050026"
       "Venous H/SAT":          "VH123456"
       "Flow Sensor Red":       "F-R12345"
       "Cerebral Oximeter Ch1": "C1234567"
-      "Core Calculated":       "C1234567"
+      "Core Calculated":       "CDICore0001"
     tick_data:
-      9:  ["24.1", "24.0", "24.05", "24.1", "24.2", "23.9", "24.15", "24.0"]
-      42: ["12.8", "12.7", "12.75", "12.8", "12.9", "12.85", "12.7", "12.8"]
-      49: ["12.0", "11.9", "12.05", "12.1", "12.0", "11.95", "12.1", "12.0"]
-      50: ["68.5", "69.0", "68.8", "69.2", "68.6", "69.1", "68.9", "69.0"]
-      55: ["4900", "5000", "5050", "5100", "5100", "4950", "5000", "5050"]
-      60: ["72.0", "72.5", "71.8", "72.2", "72.8", "72.1", "72.4", "72.0"]
-      70: ["245", "248", "250", "252", "249", "247", "251", "248"]
-      71: ["560", "563", "565", "567", "569", "564", "566", "562"]
-      72: ["138", "140", "141", "142", "140", "139", "141", "140"]
-      73: ["28.5", "28.8", "29.0", "29.2", "28.7", "28.9", "29.1", "28.8"]
-      75: ["315", "318", "320", "322", "319", "317", "321", "318"]
-      89: ["310", "310", "310", "310", "310", "310", "310", "310"]
+      76: ["89", "88", "90", "89", "88", "89"]
+      70: ["0", "0", "1", "0", "0", "0"]
+      74: ["0", "0", "0", "1", "0", "0"]
+      71: ["-636", "-635", "-638", "-637", "-636", "-634"]
+      75: ["-254", "-253", "-255", "-254", "-254", "-252"]
+      73: ["na", "na", "na", "na", "na", "na"]
+      9:  ["100.000000", "99.900000", "100.100000", "100.000000", "99.950000", "100.050000"]
+      2:  ["6.942100", "6.941900", "6.942300", "6.942000", "6.942200", "6.941800"]
+      4:  ["997.062100", "996.962100", "997.162100", "997.062100", "997.012100", "997.112100"]
+      6:  ["509.247300", "509.147300", "509.347300", "509.247300", "509.197300", "509.297300"]
+      10: ["16.621100", "16.621000", "16.621200", "16.621100", "16.621300", "16.621000"]
+      8:  ["99.799400", "99.799300", "99.799500", "99.799400", "99.799600", "99.799200"]
+      11: ["28.146300", "28.146200", "28.146400", "28.146300", "28.146100", "28.146500"]
+      48: ["-30.500000", "-30.400000", "-30.600000", "-30.500000", "-30.450000", "-30.550000"]
+      49: ["-10.390000", "-10.380000", "-10.400000", "-10.390000", "-10.395000", "-10.385000"]
+      50: ["91.100000", "91.000000", "91.200000", "91.100000", "91.150000", "91.050000"]
 
   # ── Device 2: Arterial/Venous Focus (default IDLE) ──────────────────────
   - serial: "C2345678"

@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.zip
+*.exe
+build/
+dist/
+build_fixed/
+build_rel_v102/
+dist_fixed/
+dist_rel_v102/
+CDI-Fleet-Simulator-v1.0.1-Windows/
+CDI-Fleet-Simulator-v1.0.2-Windows/
+.fleet_runtime_state.json

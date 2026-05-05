@@ -58,10 +58,16 @@ class DeviceRunner(threading.Thread):
         self.stream = None
         self._send_q: qmod.Queue = qmod.Queue()
         self._tag = f"[{self.ds.device_id}]"
+        self._ack_q: qmod.Queue = qmod.Queue()
 
         # Background response reader state
-        self._ack_event = threading.Event()
         self._stream_alive = True
+        self._tick_interval_sec = float(self.server_cfg.get("tick_interval_sec", 1.0))
+        raw_jitter_ms = int(self.server_cfg.get("tick_jitter_ms", 180))
+        max_safe_jitter_ms = max(0, int(self._tick_interval_sec * 400))
+        jitter_ms = max(0, min(raw_jitter_ms, max_safe_jitter_ms))
+        seed = sum(ord(c) for c in self.ds.device_id)
+        self._tick_jitter_sec = (seed % (jitter_ms + 1)) / 1000.0 if jitter_ms > 0 else 0.0
 
     # ── gRPC plumbing ────────────────────────────────────────────────────
 
@@ -83,7 +89,6 @@ class DeviceRunner(threading.Thread):
                     if self.stop_event.is_set():
                         break
                     self._process_response(resp)
-                    self._ack_event.set()  # Signal that a response arrived
             except StopIteration:
                 self._log("READER: Stream ended (server closed)")
             except grpc.RpcError as e:
@@ -94,7 +99,6 @@ class DeviceRunner(threading.Thread):
                     self._log(f"READER: Error — {e}")
             finally:
                 self._stream_alive = False
-                self._ack_event.set()  # Unblock any waiter
 
         t = threading.Thread(target=_reader, daemon=True, name=f"reader-{self.ds.device_id}")
         t.start()
@@ -105,10 +109,12 @@ class DeviceRunner(threading.Thread):
         try:
             if resp.HasField("manager_ack"):
                 ack = resp.manager_ack
-                self._log(
-                    f"<< ManagerAck  ref_seq={ack.ref_seq}  "
-                    f"for={ack.ack_for_message_type}  msg='{ack.message}'"
-                )
+                self._ack_q.put((ack.ack_for_message_type, int(ack.ref_seq), ack.message))
+                if ack.ack_for_message_type != "DataTick":
+                    self._log(
+                        f"<< ManagerAck  ref_seq={ack.ref_seq}  "
+                        f"for={ack.ack_for_message_type}  msg='{ack.message}'"
+                    )
             elif resp.HasField("stream_config"):
                 self._log(f"<< StreamConfig (config_version={resp.stream_config.config_version})")
             elif resp.HasField("patient_bind"):
@@ -120,19 +126,38 @@ class DeviceRunner(threading.Thread):
         except Exception as e:
             self._log(f"<< Response parse error: {e}")
 
-    def _send_and_wait_ack(self, msg, label: str, timeout: float = 5.0) -> bool:
+    def _send_and_wait_ack(self, msg, label: str, timeout: float = 5.0, expected_ack_type: str | None = None) -> bool:
         """Send a message and wait for the background reader to receive a response.
         Used for critical messages: Announcement, ProfileMetadata, CoreStateEvent."""
         if not self._stream_alive:
             self._log(f"ERROR: Stream dead, cannot send: {label}")
             return False
-        self._ack_event.clear()
+
+        # Flush stale ACKs so we only evaluate responses received after this send.
+        while True:
+            try:
+                self._ack_q.get_nowait()
+            except qmod.Empty:
+                break
+
         self._log(f">> {label}")
         self._send_q.put(msg)
-        # Wait for background reader to signal a response arrived
-        if not self._ack_event.wait(timeout=timeout):
-            self._log(f"WARNING: No server response within {timeout}s for: {label}")
-            return not self.stop_event.is_set()
+
+        deadline = time.monotonic() + timeout
+        while not self.stop_event.is_set() and self._stream_alive:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._log(f"WARNING: No server response within {timeout}s for: {label}")
+                return True
+            try:
+                ack_for, _, _ = self._ack_q.get(timeout=min(0.25, remaining))
+            except qmod.Empty:
+                continue
+
+            if expected_ack_type and ack_for and ack_for != expected_ack_type:
+                continue
+            return True
+
         return self._stream_alive
 
     def _send_no_wait(self, msg, label: str) -> bool:
@@ -164,6 +189,8 @@ class DeviceRunner(threading.Thread):
 
     def _build_profile_metadata(self, profile_name: str) -> telemetry_pb2.DeviceToManager:
         profile = self.profiles.get(profile_name, self.profiles.get("minimal", {}))
+        metadata_param_ids = profile.get("metadata_param_ids", profile.get("param_ids", []))
+        selected_param_ids = set(profile.get("selected_param_ids", profile.get("param_ids", [])))
         now_ms = _now_ms()
         ms_id = f"MS-{self.ds.serial}-{now_ms}"
 
@@ -185,7 +212,7 @@ class DeviceRunner(threading.Thread):
             flow_source=profile.get("flow_source", "Flow_Red"),
         )
 
-        for pid in profile.get("param_ids", []):
+        for pid in metadata_param_ids:
             cat = self.catalog.get(pid)
             if not cat:
                 continue
@@ -193,7 +220,7 @@ class DeviceRunner(threading.Thread):
             p.param_id = pid
             p.param_name = cat["name"]
             p.unit = cat.get("unit", "")
-            p.selected = True
+            p.selected = pid in selected_param_ids
 
             # Source device
             personality = cat.get("source_personality", "Core Calculated")
@@ -243,7 +270,7 @@ class DeviceRunner(threading.Thread):
             profile_name = self.ds.profile_name
 
         profile = self.profiles.get(profile_name or "minimal", {})
-        param_ids = profile.get("param_ids", [])
+        param_ids = profile.get("metadata_param_ids", profile.get("param_ids", []))
 
         now_ms = _now_ms()
         dt = telemetry_pb2.DataTick(
@@ -294,7 +321,11 @@ class DeviceRunner(threading.Thread):
             self._log(f"   Profile changed ({existing_profile} → {profile_name}), resending ProfileMetadata")
             msg = self._build_profile_metadata(profile_name)
             param_count = len(msg.profile_metadata.params)
-            if not self._send_and_wait_ack(msg, f"ProfileMetadata({profile_name}, {param_count} params)"):
+            if not self._send_and_wait_ack(
+                msg,
+                f"ProfileMetadata({profile_name}, {param_count} params)",
+                expected_ack_type="ProfileMetadata",
+            ):
                 return False
             time.sleep(0.3)
 
@@ -306,7 +337,7 @@ class DeviceRunner(threading.Thread):
 
         # 2. CoreStateEvent(MEASURING)
         msg = self._build_state_event("MEASURING", "StartCase")
-        if not self._send_and_wait_ack(msg, "CoreStateEvent(MEASURING)"):
+        if not self._send_and_wait_ack(msg, "CoreStateEvent(MEASURING)", expected_ack_type="CoreStateEvent"):
             return False
 
         with self.ds.lock:
@@ -317,7 +348,11 @@ class DeviceRunner(threading.Thread):
     def _transition_to_idle(self, reason: str = "StopCase") -> bool:
         """Send CoreStateEvent(IDLE) and stop ticking."""
         msg = self._build_state_event("IDLE", reason)
-        ok = self._send_and_wait_ack(msg, f"CoreStateEvent(IDLE, {reason})")
+        ok = self._send_and_wait_ack(
+            msg,
+            f"CoreStateEvent(IDLE, {reason})",
+            expected_ack_type="CoreStateEvent",
+        )
         # Update state regardless of ACK success - state change was initiated
         with self.ds.lock:
             self.ds.current_state = "IDLE"
@@ -339,7 +374,11 @@ class DeviceRunner(threading.Thread):
             self._log(f"   IDLE → STANDBY: sending ProfileMetadata({pname}) first")
             pm_msg = self._build_profile_metadata(pname)
             param_count = len(pm_msg.profile_metadata.params)
-            if not self._send_and_wait_ack(pm_msg, f"ProfileMetadata({pname}, {param_count} params)"):
+            if not self._send_and_wait_ack(
+                pm_msg,
+                f"ProfileMetadata({pname}, {param_count} params)",
+                expected_ack_type="ProfileMetadata",
+            ):
                 self._log("   ERROR: ProfileMetadata send failed, aborting standby")
                 return False
             time.sleep(0.3)
@@ -350,7 +389,11 @@ class DeviceRunner(threading.Thread):
 
         # Send CoreStateEvent(STANDBY)
         msg = self._build_state_event("STANDBY", reason)
-        ok = self._send_and_wait_ack(msg, f"CoreStateEvent(STANDBY, {reason})")
+        ok = self._send_and_wait_ack(
+            msg,
+            f"CoreStateEvent(STANDBY, {reason})",
+            expected_ack_type="CoreStateEvent",
+        )
         # Update state regardless of ACK success
         with self.ds.lock:
             self.ds.current_state = "STANDBY"
@@ -421,7 +464,11 @@ class DeviceRunner(threading.Thread):
         elif cmd_type == "set_profile":
             profile = cmd.get("profile", "minimal")
             msg = self._build_profile_metadata(profile)
-            return self._send_and_wait_ack(msg, f"ProfileMetadata({profile})")
+            return self._send_and_wait_ack(
+                msg,
+                f"ProfileMetadata({profile})",
+                expected_ack_type="ProfileMetadata",
+            )
 
         else:
             self._log(f"    ✗ Unknown command type: {cmd_type}")
@@ -437,7 +484,7 @@ class DeviceRunner(threading.Thread):
                 return
 
             # Step 2: Main loop — NEVER blocked by server I/O
-            last_tick_time = 0.0
+            next_tick_due = time.monotonic() + self._tick_jitter_sec
             next_reconnect_time = 0.0
 
             while not self.stop_event.is_set():
@@ -448,7 +495,7 @@ class DeviceRunner(threading.Thread):
                         self._log("Stream dropped, attempting reconnect...")
                         if self._start_session(send_initial_state=False):
                             self._log("Reconnect successful")
-                            last_tick_time = 0.0
+                            next_tick_due = time.monotonic() + self._tick_jitter_sec
                         else:
                             self._log("Reconnect failed, retrying in 2s")
                             next_reconnect_time = now + 2.0
@@ -475,9 +522,9 @@ class DeviceRunner(threading.Thread):
                     is_measuring = self.ds.current_state == "MEASURING"
 
                 if is_measuring:
-                    # Fire-and-forget DataTick every 1 second (non-blocking)
-                    now = time.time()
-                    if now - last_tick_time >= 1.0:
+                    # Fire-and-forget DataTick on fixed cadence (non-blocking)
+                    now = time.monotonic()
+                    if now >= next_tick_due:
                         msg = self._build_data_tick()
                         vals_str = ", ".join(
                             f"{v.param_id}={v.value}"
@@ -490,11 +537,14 @@ class DeviceRunner(threading.Thread):
                         if not ok:
                             self._set_error("DataTick send failed (stream dead); waiting for reconnect")
                             # Don't exit thread. Reconnect path at top of loop handles recovery.
-                        last_tick_time = time.time()
+                        while next_tick_due <= now:
+                            next_tick_due += self._tick_interval_sec
 
                     # Short sleep — commands checked every 100ms
                     self.stop_event.wait(0.1)
                 else:
+                    # Reset cadence anchor when not measuring.
+                    next_tick_due = time.monotonic() + self._tick_jitter_sec
                     # Not measuring — poll for commands every 200ms
                     self.stop_event.wait(0.2)
 
@@ -516,7 +566,7 @@ class DeviceRunner(threading.Thread):
 
         # Announce
         msg = self._build_announcement()
-        if not self._send_and_wait_ack(msg, "DeviceAnnouncement"):
+        if not self._send_and_wait_ack(msg, "DeviceAnnouncement", expected_ack_type="DeviceAnnouncement"):
             self._set_error("Announcement failed")
             return False
         time.sleep(0.2)
@@ -537,7 +587,11 @@ class DeviceRunner(threading.Thread):
         else:
             # Default to IDLE startup event (including unknown/missing initial state)
             msg = self._build_state_event("IDLE", "Startup")
-            if not self._send_and_wait_ack(msg, "CoreStateEvent(IDLE, Startup)"):
+            if not self._send_and_wait_ack(
+                msg,
+                "CoreStateEvent(IDLE, Startup)",
+                expected_ack_type="CoreStateEvent",
+            ):
                 self._set_error("Initial IDLE state event failed")
                 return False
 
@@ -559,7 +613,11 @@ class DeviceRunner(threading.Thread):
             self.stub = telemetry_pb2_grpc.TelemetryServiceStub(self.channel)
             self.stream = self.stub.TelemetrySession(self._request_generator())
             self._stream_alive = True
-            self._ack_event.clear()
+            while True:
+                try:
+                    self._ack_q.get_nowait()
+                except qmod.Empty:
+                    break
             with self.ds.lock:
                 self.ds.connected = True
                 self.ds.error = None
