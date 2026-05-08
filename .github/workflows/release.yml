@@ -1,0 +1,53 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release notes
+        id: notes
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes_file="RELEASE_NOTES_${tag}.md"
+
+          if [[ -f "$notes_file" ]]; then
+            echo "Using $notes_file"
+            {
+              echo 'body<<EOF'
+              cat "$notes_file"
+              echo
+              echo EOF
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo 'body<<EOF'
+              echo "# ${tag}"
+              echo
+              echo "Release created from tag ${tag}."
+              echo EOF
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: CDI Fleet Simulator - ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          draft: false
+          prerelease: false
