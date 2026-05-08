@@ -30,8 +30,12 @@ if getattr(sys, 'frozen', False):
 else:
     # Running from source
     _this_dir = os.path.dirname(os.path.abspath(__file__))
+    _local_proto_dir = _this_dir
     _proto_dir = os.path.normpath(os.path.join(_this_dir, "..", "src", "Telemetry", "proto"))
-    if _proto_dir not in sys.path:
+    if os.path.isfile(os.path.join(_local_proto_dir, "telemetry_pb2.py")):
+        if _local_proto_dir not in sys.path:
+            sys.path.insert(0, _local_proto_dir)
+    elif _proto_dir not in sys.path:
         sys.path.insert(0, _proto_dir)
 
 # Verify proto stubs exist
@@ -43,9 +47,10 @@ except ImportError:
         print("[Fleet] ERROR: Proto stubs not found in bundled executable.")
         print("[Fleet] This is a packaging bug — rebuild with: pyinstaller fleet_simulator.spec")
     else:
-        print(f"[Fleet] ERROR: Proto stubs not found in {_proto_dir}")
-        print(f"[Fleet] Generate them with:")
-        print(f"  python -m grpc_tools.protoc "
+          print(f"[Fleet] ERROR: Proto stubs not found in local repo or {_proto_dir}")
+          print(f"[Fleet] Place telemetry_pb2.py and telemetry_pb2_grpc.py beside run_fleet.py")
+          print(f"[Fleet] or generate them with:")
+          print(f"  python -m grpc_tools.protoc "
               f"-I{_proto_dir} "
               f"--python_out={_proto_dir} "
               f"--grpc_python_out={_proto_dir} "
