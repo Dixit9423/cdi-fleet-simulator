@@ -14,6 +14,9 @@ from queue import Queue, Empty
 from typing import Any
 
 
+DEFAULT_TICK_SEQ_NO = 3001
+
+
 class DeviceState:
     """Mutable per-device runtime state (protected by lock)."""
 
@@ -29,7 +32,7 @@ class DeviceState:
         self.probes: dict = device_cfg.get("probes", {})
         self.tick_data: dict[int, list[str]] = device_cfg.get("tick_data", {})
         self.tick_index: int = 0
-        self.seq_no: int = 3001
+        self.seq_no: int = DEFAULT_TICK_SEQ_NO
         self.connected: bool = False
         self.connection_id: str | None = None
         self.measurement_session_id: str | None = None

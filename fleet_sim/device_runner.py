@@ -26,7 +26,7 @@ import grpc
 import telemetry_pb2
 import telemetry_pb2_grpc
 
-from fleet_sim.state_store import DeviceState, StateStore
+from fleet_sim.state_store import DeviceState, DEFAULT_TICK_SEQ_NO
 
 
 def _now_ms() -> int:
@@ -99,6 +99,8 @@ class DeviceRunner(threading.Thread):
                     self._log(f"READER: Error — {e}")
             finally:
                 self._stream_alive = False
+                with self.ds.lock:
+                    self.ds.connected = False
 
         t = threading.Thread(target=_reader, daemon=True, name=f"reader-{self.ds.device_id}")
         t.start()
@@ -260,6 +262,17 @@ class DeviceRunner(threading.Thread):
         )
         return telemetry_pb2.DeviceToManager(core_state_event=ev)
 
+    def _replay_current_state(self, reason: str) -> bool:
+        with self.ds.lock:
+            current_state = self.ds.current_state
+
+        msg = self._build_state_event(current_state, reason)
+        return self._send_and_wait_ack(
+            msg,
+            f"CoreStateEvent({current_state}, {reason})",
+            expected_ack_type="CoreStateEvent",
+        )
+
     def _build_data_tick(self) -> telemetry_pb2.DeviceToManager:
         with self.ds.lock:
             seq = self.ds.seq_no
@@ -357,6 +370,8 @@ class DeviceRunner(threading.Thread):
         with self.ds.lock:
             self.ds.current_state = "IDLE"
             self.ds.patient_id = None
+            self.ds.seq_no = DEFAULT_TICK_SEQ_NO
+            self.ds.tick_index = 0
         self._log(f"   Transitioned to IDLE (reason: {reason})")
         return ok
 
@@ -493,9 +508,10 @@ class DeviceRunner(threading.Thread):
                     now = time.time()
                     if now >= next_reconnect_time:
                         self._log("Stream dropped, attempting reconnect...")
-                        if self._start_session(send_initial_state=False):
+                        if self._start_session(send_initial_state=False, replay_current_state=True):
                             self._log("Reconnect successful")
                             next_tick_due = time.monotonic() + self._tick_jitter_sec
+                            next_reconnect_time = 0.0
                         else:
                             self._log("Reconnect failed, retrying in 2s")
                             next_reconnect_time = now + 2.0
@@ -555,8 +571,8 @@ class DeviceRunner(threading.Thread):
         finally:
             self._disconnect()
 
-    def _start_session(self, send_initial_state: bool) -> bool:
-        """Establish stream, start response reader, announce and (optionally) send initial state."""
+    def _start_session(self, send_initial_state: bool, replay_current_state: bool = False) -> bool:
+        """Establish stream, start response reader, announce and optionally send initial or replayed state."""
         self._connect()
         if not self.ds.connected:
             return False
@@ -570,6 +586,12 @@ class DeviceRunner(threading.Thread):
             self._set_error("Announcement failed")
             return False
         time.sleep(0.2)
+
+        if replay_current_state:
+            if not self._replay_current_state("Reconnect"):
+                self._set_error("Reconnect state replay failed")
+                return False
+            return True
 
         if not send_initial_state:
             return True
@@ -604,6 +626,19 @@ class DeviceRunner(threading.Thread):
         target = f"{self.server_cfg['host']}:{self.server_cfg['port']}"
         self._log(f"Connecting to {target}...")
         try:
+            if self.channel:
+                try:
+                    self.channel.close()
+                except Exception:
+                    pass
+                self.channel = None
+
+            while True:
+                try:
+                    self._send_q.get_nowait()
+                except qmod.Empty:
+                    break
+
             self.channel = self.channel_factory()
             try:
                 grpc.channel_ready_future(self.channel).result(timeout=5)
