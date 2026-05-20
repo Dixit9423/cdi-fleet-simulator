@@ -14,7 +14,7 @@ from queue import Queue, Empty
 from typing import Any
 
 
-DEFAULT_TICK_SEQ_NO = 3001
+DEFAULT_TICK_SEQ_NO = 1
 
 
 class DeviceState:
@@ -40,11 +40,20 @@ class DeviceState:
         self.total_ticks_sent: int = 0
         self.last_tick_utc_ms: int | None = None
         self.error: str | None = None
+        self.pending_patient_id: str | None = None
+        self.deferred_patient_id: str | None = None
+        self.patient_cooldown_until_ms: int | None = None
+        self.case_paused: bool = False
         self.command_queue: Queue = Queue()
 
     def snapshot(self) -> dict:
         """Return a JSON-serialisable copy of current state."""
+        now_ms = int(time.time() * 1000)
         with self.lock:
+            cooldown_remaining_sec = 0
+            if self.patient_cooldown_until_ms and self.patient_cooldown_until_ms > now_ms:
+                cooldown_remaining_sec = int((self.patient_cooldown_until_ms - now_ms + 999) / 1000)
+
             return {
                 "device_id": self.device_id,
                 "serial": self.serial,
@@ -60,6 +69,11 @@ class DeviceState:
                 "seq_no": self.seq_no,
                 "total_ticks_sent": self.total_ticks_sent,
                 "last_tick_utc_ms": self.last_tick_utc_ms,
+                "pending_patient_id": self.pending_patient_id,
+                "deferred_patient_id": self.deferred_patient_id,
+                "patient_cooldown_until_ms": self.patient_cooldown_until_ms,
+                "cooldown_remaining_sec": cooldown_remaining_sec,
+                "case_paused": self.case_paused,
                 "error": self.error,
             }
 

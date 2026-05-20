@@ -108,6 +108,28 @@
     font-size: 0.85rem; display: none; z-index: 1000;
     box-shadow: 0 4px 12px rgba(0,0,0,.4);
   }
+
+  .patient-state {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.74rem; font-weight: 600;
+    padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .patient-state.bound { color: var(--green); border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.08); }
+  .patient-state.pending { color: var(--yellow); border-color: rgba(234,179,8,.45); background: rgba(234,179,8,.08); }
+  .patient-state.cooldown { color: var(--cyan); border-color: rgba(6,182,212,.45); background: rgba(6,182,212,.08); }
+  .patient-state.unbound { color: var(--muted); }
+  .spinner {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid rgba(6,182,212,.35);
+    border-top-color: var(--cyan);
+    animation: spin .9s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
 </style>
 </head>
 <body>
@@ -204,10 +226,21 @@ function renderDevice(d) {
     ? `<span class="label">Session:</span> <span class="val">${d.measurement_session_id}</span>` : '';
   const patientInfo = d.patient_id
     ? `<span class="label">Patient:</span> <span class="val">${d.patient_id}</span>` : '';
+  const pendingPatientInfo = d.pending_patient_id
+    ? `<span class="label">Pending Patient:</span> <span class="val">${d.pending_patient_id}</span>` : '';
   const tickInfo = d.current_state === 'MEASURING'
     ? `<span class="label">Ticks:</span> <span class="val">${d.total_ticks_sent} (seq ${d.seq_no})</span>` : '';
   const errorInfo = d.error
     ? `<span class="label">Error:</span> <span class="val" style="color:var(--red)">${d.error}</span>` : '';
+
+  let patientIndicator = `<div class="patient-state unbound">Patient: Unbound</div>`;
+  if (d.patient_id) {
+    patientIndicator = `<div class="patient-state bound">🟢 Patient Bound</div>`;
+  } else if (d.pending_patient_id) {
+    patientIndicator = `<div class="patient-state pending">🟡 Patient Decision Required</div>`;
+  } else if ((d.cooldown_remaining_sec || 0) > 0) {
+    patientIndicator = `<div class="patient-state cooldown"><span class="spinner"></span>Next patient ID in ${d.cooldown_remaining_sec}s</div>`;
+  }
 
   return `
     <div class="device-card" data-device-id="${d.device_id}">
@@ -218,12 +251,14 @@ function renderDevice(d) {
         </span>
         <span class="badge ${badgeState}">${badgeState}</span>
       </div>
+      ${patientIndicator}
       <div class="device-meta">
         <span class="label">Serial:</span>  <span class="val">${d.serial}</span>
         <span class="label">Site:</span>    <span class="val">${d.site}</span>
         <span class="label">Version:</span> <span class="val">${d.sw_version}</span>
         <span class="label">Profile:</span> <span class="val">${d.profile_name || '—'}</span>
         ${patientInfo}
+        ${pendingPatientInfo}
         ${sessionInfo}
         ${tickInfo}
         ${errorInfo}
@@ -234,7 +269,7 @@ function renderDevice(d) {
           <select id="prof_${d.device_id}" class="profile-select" onchange="profileChanged(this, '${d.device_id}')">
             ${profileOptions()}
           </select>
-          <button class="primary" onclick="toStandby('${d.device_id}')">⏸ Standby</button>
+          <button class="primary" onclick="toStandby('${d.device_id}', '${d.current_state}')">⏸ Standby</button>
         ` : ''}
         ${d.current_state === 'STANDBY' ? `
           <!-- STANDBY: Start measuring or go back to Idle -->
@@ -245,7 +280,7 @@ function renderDevice(d) {
         ${d.current_state === 'MEASURING' ? `
           <!-- MEASURING: Stop (→Idle) or Standby -->
           <button class="danger" onclick="stopMeasuring('${d.device_id}')">■ Stop → Idle</button>
-          <button onclick="toStandby('${d.device_id}')">⏸ Standby</button>
+          <button onclick="toStandby('${d.device_id}', '${d.current_state}')">⏸ Standby</button>
           ${!d.patient_id ? `
             <input id="bind_${d.device_id}" placeholder="PAT-ID" style="width:100px" class="bind-input" />
             <button onclick="bindPatient('${d.device_id}')">🔗 Bind</button>
@@ -255,6 +290,10 @@ function renderDevice(d) {
         ` : ''}
         ${d.patient_id && d.current_state !== 'MEASURING' ? `
           <button onclick="releasePatient('${d.device_id}')">🔓 Release Patient</button>
+        ` : ''}
+        ${d.pending_patient_id ? `
+          <button class="primary" onclick="patientDecision('${d.device_id}', 'accept')">✅ Accept Patient</button>
+          <button class="danger" onclick="patientDecision('${d.device_id}', 'reject')">❌ Reject Patient</button>
         ` : ''}
       </div>
     </div>
@@ -322,14 +361,15 @@ function stopMeasuring(id) {
   apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'StopCase' });
 }
 
-function toStandby(id) {
+function toStandby(id, fromState) {
   // From IDLE: include selected profile so ProfileMetadata is sent
   // From MEASURING: profile is already active
   const profSelect = document.getElementById(`prof_${id}`);
   const profile = profSelect ? profSelect.value : undefined;
-  console.log('[Fleet UI] → Standby device:', id, 'profile:', profile);
+  const reason = fromState === 'MEASURING' ? 'StandByCase' : 'Standby';
+  console.log('[Fleet UI] → Standby device:', id, 'profile:', profile, 'reason:', reason);
   apiPost(`${API}/api/devices/${id}/state`, {
-    state: 'STANDBY', reason: 'Standby', profile: profile || undefined
+    state: 'STANDBY', reason, profile: profile || undefined
   });
 }
 
@@ -349,6 +389,10 @@ function bindPatient(id) {
 
 function releasePatient(id) {
   apiPost(`${API}/api/devices/${id}/patient`, { action: 'release' });
+}
+
+function patientDecision(id, decision) {
+  apiPost(`${API}/api/devices/${id}/patient-decision`, { decision });
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────

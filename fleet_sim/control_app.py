@@ -155,9 +155,10 @@ def change_state(device_id: str, req: StateChangeRequest):
     elif state == "STANDBY":
         if current not in ("IDLE", "MEASURING"):
             raise HTTPException(400, f"Cannot go to STANDBY from {current}")
+        default_reason = "StandByCase" if current == "MEASURING" else "Standby"
         cmd = {
             "type": "standby",
-            "reason": req.reason or "Standby",
+            "reason": req.reason or default_reason,
             "profile": req.profile or "minimal",
         }
     else:
@@ -189,6 +190,27 @@ def manage_patient(device_id: str, req: PatientRequest):
     else:
         raise HTTPException(400, f"Invalid action: {req.action}")
 
+    _store.push_command(device_id, cmd)
+    return {"status": "queued", "device_id": device_id, "command": cmd}
+
+
+class PatientDecisionRequest(BaseModel):
+    decision: str  # accept | reject
+
+
+@app.post("/api/devices/{device_id}/patient-decision")
+def patient_decision(device_id: str, req: PatientDecisionRequest):
+    if not _store:
+        raise HTTPException(503, "Fleet not yet initialized")
+    ds = _store.get_device(device_id)
+    if not ds:
+        raise HTTPException(404, f"Device {device_id} not found")
+
+    decision = req.decision.lower()
+    if decision not in ("accept", "reject"):
+        raise HTTPException(400, "decision must be 'accept' or 'reject'")
+
+    cmd = {"type": "patient_decision", "decision": decision}
     _store.push_command(device_id, cmd)
     return {"status": "queued", "device_id": device_id, "command": cmd}
 

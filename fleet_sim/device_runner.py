@@ -120,13 +120,47 @@ class DeviceRunner(threading.Thread):
             elif resp.HasField("stream_config"):
                 self._log(f"<< StreamConfig (config_version={resp.stream_config.config_version})")
             elif resp.HasField("patient_bind"):
-                self._log(f"<< PatientBind (patient={resp.patient_bind.patient_id})")
+                patient_id = resp.patient_bind.patient_id
+                with self.ds.lock:
+                    cooldown_until = self.ds.patient_cooldown_until_ms
+                    cooldown_active = bool(cooldown_until and cooldown_until > _now_ms())
+                    if cooldown_active:
+                        self.ds.deferred_patient_id = patient_id
+                        self._log(
+                            f"<< PatientBind deferred for cooldown (patient={patient_id}, "
+                            f"ready_in={int((cooldown_until - _now_ms() + 999) / 1000)}s)"
+                        )
+                    else:
+                        self.ds.pending_patient_id = patient_id
+                        self.ds.deferred_patient_id = None
+                        self._log(f"<< PatientBind pending decision (patient={patient_id})")
             elif resp.HasField("patient_release"):
-                self._log(f"<< PatientRelease (patient={resp.patient_release.patient_id})")
+                with self.ds.lock:
+                    released_patient = resp.patient_release.patient_id
+                    self.ds.patient_id = None
+                    self.ds.pending_patient_id = None
+                    self.ds.deferred_patient_id = None
+                    self.ds.patient_cooldown_until_ms = _now_ms() + 60000
+                self._log(f"<< PatientRelease (patient={released_patient})")
             else:
                 self._log("<< Unknown response")
         except Exception as e:
             self._log(f"<< Response parse error: {e}")
+
+    def _activate_deferred_patient_if_ready(self):
+        """Move deferred patient to pending once cooldown expires."""
+        with self.ds.lock:
+            cooldown_until = self.ds.patient_cooldown_until_ms
+            if cooldown_until and cooldown_until > _now_ms():
+                return
+            if cooldown_until and cooldown_until <= _now_ms():
+                self.ds.patient_cooldown_until_ms = None
+            deferred = self.ds.deferred_patient_id
+            if not deferred:
+                return
+            self.ds.pending_patient_id = deferred
+            self.ds.deferred_patient_id = None
+        self._log(f"   PatientBind now pending decision (patient={deferred})")
 
     def _send_and_wait_ack(self, msg, label: str, timeout: float = 5.0, expected_ack_type: str | None = None) -> bool:
         """Send a message and wait for the background reader to receive a response.
@@ -189,22 +223,27 @@ class DeviceRunner(threading.Thread):
         )
         return telemetry_pb2.DeviceToManager(device_announcement=ann)
 
-    def _build_profile_metadata(self, profile_name: str) -> telemetry_pb2.DeviceToManager:
+    def _build_profile_metadata(self, profile_name: str, force_new_session: bool = False) -> telemetry_pb2.DeviceToManager:
         profile = self.profiles.get(profile_name, self.profiles.get("minimal", {}))
         metadata_param_ids = profile.get("metadata_param_ids", profile.get("param_ids", []))
         selected_param_ids = set(profile.get("selected_param_ids", profile.get("param_ids", [])))
         now_ms = _now_ms()
-        ms_id = f"MS-{self.ds.serial}-{now_ms}"
 
         with self.ds.lock:
+            existing_session_id = self.ds.measurement_session_id
+            ms_id = existing_session_id
+            if force_new_session or not existing_session_id:
+                ms_id = f"MS-{self.ds.serial}-{now_ms}"
             self.ds.profile_version += 1
             self.ds.measurement_session_id = ms_id
             self.ds.profile_name = profile_name
+            patient_id = self.ds.patient_id or ""
             pv = self.ds.profile_version
 
         pm = telemetry_pb2.ProfileMetadata(
             device_id=self.ds.device_id,
             measurement_session_id=ms_id,
+            patient_id=patient_id,
             connection_id=self.ds.connection_id or "",
             profile_version=pv,
             sent_utc_ms=now_ms,
@@ -322,7 +361,7 @@ class DeviceRunner(threading.Thread):
 
     # ── State transitions ────────────────────────────────────────────────
 
-    def _transition_to_measuring(self, profile_name: str, patient_id: str | None) -> bool:
+    def _transition_to_measuring(self, profile_name: str, patient_id: str | None, reason: str = "StartCase") -> bool:
         """STANDBY → MEASURING: ProfileMetadata was already sent during IDLE→STANDBY.
         Just bind patient (if any) and send CoreStateEvent(MEASURING)."""
         with self.ds.lock:
@@ -346,15 +385,17 @@ class DeviceRunner(threading.Thread):
         if patient_id:
             with self.ds.lock:
                 self.ds.patient_id = patient_id
+                self.ds.pending_patient_id = None
             self._log(f"   Patient bound: {patient_id}")
 
         # 2. CoreStateEvent(MEASURING)
-        msg = self._build_state_event("MEASURING", "StartCase")
+        msg = self._build_state_event("MEASURING", reason)
         if not self._send_and_wait_ack(msg, "CoreStateEvent(MEASURING)", expected_ack_type="CoreStateEvent"):
             return False
 
         with self.ds.lock:
             self.ds.current_state = "MEASURING"
+            self.ds.case_paused = False
         self._log(f"   Transitioned to MEASURING (profile={profile_name})")
         return True
 
@@ -369,9 +410,13 @@ class DeviceRunner(threading.Thread):
         # Update state regardless of ACK success - state change was initiated
         with self.ds.lock:
             self.ds.current_state = "IDLE"
-            self.ds.patient_id = None
+            if reason != "StopCase":
+                self.ds.patient_id = None
+                self.ds.pending_patient_id = None
             self.ds.seq_no = DEFAULT_TICK_SEQ_NO
             self.ds.tick_index = 0
+            self.ds.measurement_session_id = None
+            self.ds.case_paused = False
         self._log(f"   Transitioned to IDLE (reason: {reason})")
         return ok
 
@@ -387,7 +432,7 @@ class DeviceRunner(threading.Thread):
             # IDLE → STANDBY: must send ProfileMetadata first
             pname = profile_name or "minimal"
             self._log(f"   IDLE → STANDBY: sending ProfileMetadata({pname}) first")
-            pm_msg = self._build_profile_metadata(pname)
+            pm_msg = self._build_profile_metadata(pname, force_new_session=True)
             param_count = len(pm_msg.profile_metadata.params)
             if not self._send_and_wait_ack(
                 pm_msg,
@@ -397,8 +442,12 @@ class DeviceRunner(threading.Thread):
                 self._log("   ERROR: ProfileMetadata send failed, aborting standby")
                 return False
             time.sleep(0.3)
+            with self.ds.lock:
+                self.ds.case_paused = False
         elif current == "MEASURING":
             self._log("   MEASURING → STANDBY: profile already active, sending state event only")
+            with self.ds.lock:
+                self.ds.case_paused = True
         else:
             self._log(f"   WARNING: Unexpected transition from {current} → STANDBY")
 
@@ -433,8 +482,10 @@ class DeviceRunner(threading.Thread):
                 return False
             profile = cmd.get("profile") or self.ds.profile_name or "minimal"
             patient = cmd.get("patient_id")
+            with self.ds.lock:
+                event_reason = "ResumeCase" if self.ds.case_paused else "StartCase"
             self._log(f"    → STANDBY → MEASURING with profile={profile}, patient={patient}")
-            return self._transition_to_measuring(profile, patient)
+            return self._transition_to_measuring(profile, patient, reason=event_reason)
 
         elif cmd_type == "stop_measuring":
             self._log(f"    → Stopping (stop_measuring command)")
@@ -465,8 +516,37 @@ class DeviceRunner(threading.Thread):
         elif cmd_type == "release_patient":
             with self.ds.lock:
                 self.ds.patient_id = None
+                self.ds.pending_patient_id = None
             self._log(f"    → Patient released")
             return True
+
+        elif cmd_type == "patient_decision":
+            decision = str(cmd.get("decision", "")).lower()
+            with self.ds.lock:
+                pending = self.ds.pending_patient_id
+                current_state = self.ds.current_state
+            if not pending:
+                self._log("    → No pending patient decision")
+                return True
+
+            if decision == "accept":
+                with self.ds.lock:
+                    self.ds.patient_id = pending
+                    self.ds.pending_patient_id = None
+                msg = self._build_state_event(current_state, "PatientID Accepted")
+            elif decision == "reject":
+                with self.ds.lock:
+                    self.ds.pending_patient_id = None
+                msg = self._build_state_event(current_state, "Rejected ")
+            else:
+                self._log(f"    ✗ Unknown patient decision: {decision}")
+                return False
+
+            return self._send_and_wait_ack(
+                msg,
+                f"CoreStateEvent({current_state}, patient_decision={decision})",
+                expected_ack_type="CoreStateEvent",
+            )
 
         elif cmd_type == "update_tick_data":
             pid = int(cmd.get("param_id", 0))
@@ -503,6 +583,8 @@ class DeviceRunner(threading.Thread):
             next_reconnect_time = 0.0
 
             while not self.stop_event.is_set():
+                self._activate_deferred_patient_if_ready()
+
                 # If server stream dropped, keep thread alive and reconnect.
                 if not self._stream_alive:
                     now = time.time()
