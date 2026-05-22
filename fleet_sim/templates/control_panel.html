@@ -366,7 +366,7 @@ function toStandby(id, fromState) {
   // From MEASURING: profile is already active
   const profSelect = document.getElementById(`prof_${id}`);
   const profile = profSelect ? profSelect.value : undefined;
-  const reason = fromState === 'MEASURING' ? 'StandByCase' : 'Standby';
+  const reason = fromState === 'MEASURING' ? 'StandByCase' : 'SetProfile';
   console.log('[Fleet UI] → Standby device:', id, 'profile:', profile, 'reason:', reason);
   apiPost(`${API}/api/devices/${id}/state`, {
     state: 'STANDBY', reason, profile: profile || undefined
