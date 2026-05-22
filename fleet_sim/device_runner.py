@@ -498,7 +498,8 @@ class DeviceRunner(threading.Thread):
                 return False
             profile = cmd.get("profile")
             self._log(f"    → {current} → STANDBY (profile={profile})")
-            return self._transition_to_standby(cmd.get("reason", "Standby"), profile_name=profile)
+            default_reason = "StandByCase" if current == "MEASURING" else "SetProfile"
+            return self._transition_to_standby(cmd.get("reason") or default_reason, profile_name=profile)
 
         elif cmd_type == "idle":
             if current == "IDLE":
