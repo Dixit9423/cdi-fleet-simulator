@@ -538,7 +538,7 @@ class DeviceRunner(threading.Thread):
             elif decision == "reject":
                 with self.ds.lock:
                     self.ds.pending_patient_id = None
-                msg = self._build_state_event(current_state, "Rejected ")
+                msg = self._build_state_event(current_state, "PatientID Rejected ")
             else:
                 self._log(f"    ✗ Unknown patient decision: {decision}")
                 return False
