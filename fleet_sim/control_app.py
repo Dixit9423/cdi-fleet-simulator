@@ -155,7 +155,7 @@ def change_state(device_id: str, req: StateChangeRequest):
     elif state == "STANDBY":
         if current not in ("IDLE", "MEASURING"):
             raise HTTPException(400, f"Cannot go to STANDBY from {current}")
-        default_reason = "StandByCase" if current == "MEASURING" else "Standby"
+        default_reason = "StandByCase" if current == "MEASURING" else "SetProfile"
         cmd = {
             "type": "standby",
             "reason": req.reason or default_reason,
