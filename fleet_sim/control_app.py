@@ -151,7 +151,7 @@ def change_state(device_id: str, req: StateChangeRequest):
     elif state == "IDLE":
         if current == "IDLE":
             raise HTTPException(400, "Device is already IDLE")
-        cmd = {"type": "idle", "reason": req.reason or "ReturnToIdle"}
+        cmd = {"type": "idle", "reason": req.reason or "StopCase"}
     elif state == "STANDBY":
         if current not in ("IDLE", "MEASURING"):
             raise HTTPException(400, f"Cannot go to STANDBY from {current}")

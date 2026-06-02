@@ -120,6 +120,25 @@
   .patient-state.pending { color: var(--yellow); border-color: rgba(234,179,8,.45); background: rgba(234,179,8,.08); }
   .patient-state.cooldown { color: var(--cyan); border-color: rgba(6,182,212,.45); background: rgba(6,182,212,.08); }
   .patient-state.unbound { color: var(--muted); }
+  .patient-state .source-badge {
+    display: inline-block;
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    margin-left: 4px;
+  }
+  .patient-state .source-badge.REAL {
+    color: var(--green);
+    border-color: rgba(34,197,94,.45);
+    background: rgba(34,197,94,.12);
+  }
+  .patient-state .source-badge.DUMMY {
+    color: var(--cyan);
+    border-color: rgba(6,182,212,.45);
+    background: rgba(6,182,212,.12);
+  }
   .spinner {
     width: 10px; height: 10px; border-radius: 50%;
     border: 2px solid rgba(6,182,212,.35);
@@ -228,6 +247,10 @@ function renderDevice(d) {
     ? `<span class="label">Patient:</span> <span class="val">${d.patient_id}</span>` : '';
   const pendingPatientInfo = d.pending_patient_id
     ? `<span class="label">Pending Patient:</span> <span class="val">${d.pending_patient_id}</span>` : '';
+  const patientSourceInfo = d.patient_source
+    ? `<span class="label">Patient Source:</span> <span class="val">${d.patient_source}</span>` : '';
+  const pendingPatientSourceInfo = d.pending_patient_source
+    ? `<span class="label">Pending Source:</span> <span class="val">${d.pending_patient_source}</span>` : '';
   const tickInfo = d.current_state === 'MEASURING'
     ? `<span class="label">Ticks:</span> <span class="val">${d.total_ticks_sent} (seq ${d.seq_no})</span>` : '';
   const errorInfo = d.error
@@ -235,9 +258,11 @@ function renderDevice(d) {
 
   let patientIndicator = `<div class="patient-state unbound">Patient: Unbound</div>`;
   if (d.patient_id) {
-    patientIndicator = `<div class="patient-state bound">🟢 Patient Bound</div>`;
+    const srcBadge = d.patient_source ? `<span class="source-badge ${d.patient_source}">${d.patient_source}</span>` : '';
+    patientIndicator = `<div class="patient-state bound">🟢 Patient Bound ${srcBadge}</div>`;
   } else if (d.pending_patient_id) {
-    patientIndicator = `<div class="patient-state pending">🟡 Patient Decision Required</div>`;
+    const pendingSrcBadge = d.pending_patient_source ? `<span class="source-badge ${d.pending_patient_source}">${d.pending_patient_source}</span>` : '';
+    patientIndicator = `<div class="patient-state pending">🟡 Patient Decision Required ${pendingSrcBadge}</div>`;
   } else if ((d.cooldown_remaining_sec || 0) > 0) {
     patientIndicator = `<div class="patient-state cooldown"><span class="spinner"></span>Next patient ID in ${d.cooldown_remaining_sec}s</div>`;
   }
@@ -258,7 +283,9 @@ function renderDevice(d) {
         <span class="label">Version:</span> <span class="val">${d.sw_version}</span>
         <span class="label">Profile:</span> <span class="val">${d.profile_name || '—'}</span>
         ${patientInfo}
+        ${patientSourceInfo}
         ${pendingPatientInfo}
+        ${pendingPatientSourceInfo}
         ${sessionInfo}
         ${tickInfo}
         ${errorInfo}
@@ -273,7 +300,6 @@ function renderDevice(d) {
         ` : ''}
         ${d.current_state === 'STANDBY' ? `
           <!-- STANDBY: Start measuring or go back to Idle -->
-          <input id="pat_${d.device_id}" placeholder="PAT-ID (optional)" style="width:130px" class="patient-input" />
           <button class="primary" onclick="startMeasuring('${d.device_id}')">▶ Start Measuring</button>
           <button onclick="toIdle('${d.device_id}')">↩ Idle</button>
         ` : ''}
@@ -284,12 +310,7 @@ function renderDevice(d) {
           ${!d.patient_id ? `
             <input id="bind_${d.device_id}" placeholder="PAT-ID" style="width:100px" class="bind-input" />
             <button onclick="bindPatient('${d.device_id}')">🔗 Bind</button>
-          ` : `
-            <button onclick="releasePatient('${d.device_id}')">🔓 Release</button>
-          `}
-        ` : ''}
-        ${d.patient_id && d.current_state !== 'MEASURING' ? `
-          <button onclick="releasePatient('${d.device_id}')">🔓 Release Patient</button>
+          ` : ''}
         ` : ''}
         ${d.pending_patient_id ? `
           <button class="primary" onclick="patientDecision('${d.device_id}', 'accept')">✅ Accept Patient</button>
@@ -348,12 +369,9 @@ function profileChanged(select, deviceId) {
 }
 
 function startMeasuring(id) {
-  // Start from STANDBY — profile already sent during IDLE→STANDBY
-  const pat = document.getElementById(`pat_${id}`)?.value || null;
-  console.log('[Fleet UI] Starting measurement, device:', id, 'patient:', pat);
-  apiPost(`${API}/api/devices/${id}/state`, {
-    state: 'MEASURING', patient_id: pat || undefined
-  });
+  // Start from STANDBY using manager-bound patient context
+  console.log('[Fleet UI] Starting measurement, device:', id);
+  apiPost(`${API}/api/devices/${id}/state`, { state: 'MEASURING' });
 }
 
 function stopMeasuring(id) {
@@ -375,7 +393,7 @@ function toStandby(id, fromState) {
 
 function toIdle(id) {
   console.log('[Fleet UI] → Idle device:', id);
-  apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'ReturnToIdle' });
+  apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'StopCase' });
 }
 
 function bindPatient(id) {
@@ -385,10 +403,6 @@ function bindPatient(id) {
     return; 
   }
   apiPost(`${API}/api/devices/${id}/patient`, { action: 'bind', patient_id: pat });
-}
-
-function releasePatient(id) {
-  apiPost(`${API}/api/devices/${id}/patient`, { action: 'release' });
 }
 
 function patientDecision(id, decision) {

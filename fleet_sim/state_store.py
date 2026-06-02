@@ -17,6 +17,17 @@ from typing import Any
 DEFAULT_TICK_SEQ_NO = 1
 
 
+def _classify_patient_source(patient_id: str | None) -> str | None:
+    if not patient_id:
+        return None
+    pid = str(patient_id).strip()
+    if pid.isdigit():
+        return "REAL"
+    if pid.upper().startswith("PAT-"):
+        return "DUMMY"
+    return None
+
+
 class DeviceState:
     """Mutable per-device runtime state (protected by lock)."""
 
@@ -28,6 +39,7 @@ class DeviceState:
         self.sw_version: str = device_cfg["sw_version"]
         self.current_state: str = device_cfg["initial_state"]  # MEASURING|IDLE|STANDBY
         self.patient_id: str | None = device_cfg.get("patient_id")
+        self.patient_source: str | None = _classify_patient_source(self.patient_id)
         self.profile_name: str | None = device_cfg.get("profile")
         self.probes: dict = device_cfg.get("probes", {})
         self.tick_data: dict[int, list[str]] = device_cfg.get("tick_data", {})
@@ -41,6 +53,7 @@ class DeviceState:
         self.last_tick_utc_ms: int | None = None
         self.error: str | None = None
         self.pending_patient_id: str | None = None
+        self.pending_patient_source: str | None = None
         self.deferred_patient_id: str | None = None
         self.patient_cooldown_until_ms: int | None = None
         self.case_paused: bool = False
@@ -70,6 +83,8 @@ class DeviceState:
                 "total_ticks_sent": self.total_ticks_sent,
                 "last_tick_utc_ms": self.last_tick_utc_ms,
                 "pending_patient_id": self.pending_patient_id,
+                "pending_patient_source": self.pending_patient_source,
+                "patient_source": self.patient_source,
                 "deferred_patient_id": self.deferred_patient_id,
                 "patient_cooldown_until_ms": self.patient_cooldown_until_ms,
                 "cooldown_remaining_sec": cooldown_remaining_sec,
@@ -150,6 +165,7 @@ class StateStore:
                 payload["devices"][dev.device_id] = {
                     "current_state": dev.current_state,
                     "patient_id": dev.patient_id,
+                    "patient_source": dev.patient_source,
                     "profile_name": dev.profile_name,
                     "tick_data": dev.tick_data,
                 }
@@ -176,6 +192,7 @@ class StateStore:
             with dev.lock:
                 dev.current_state = state.get("current_state", dev.current_state)
                 dev.patient_id = state.get("patient_id", dev.patient_id)
+                dev.patient_source = state.get("patient_source", dev.patient_source)
                 dev.profile_name = state.get("profile_name", dev.profile_name)
 
                 loaded_tick_data = state.get("tick_data")

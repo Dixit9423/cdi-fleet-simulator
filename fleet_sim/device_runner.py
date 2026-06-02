@@ -33,6 +33,19 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _classify_patient_source(patient_id: str | None) -> str | None:
+    """Classify patient source for UI/logging only.
+    Numeric ids are treated as OpenEMR (REAL); PAT-* are DUMMY."""
+    if not patient_id:
+        return None
+    pid = str(patient_id).strip()
+    if pid.isdigit():
+        return "REAL"
+    if pid.upper().startswith("PAT-"):
+        return "DUMMY"
+    return None
+
+
 class DeviceRunner(threading.Thread):
     """Simulates one CDI Core device on its own gRPC stream."""
 
@@ -121,26 +134,37 @@ class DeviceRunner(threading.Thread):
                 self._log(f"<< StreamConfig (config_version={resp.stream_config.config_version})")
             elif resp.HasField("patient_bind"):
                 patient_id = resp.patient_bind.patient_id
+                source = _classify_patient_source(patient_id)
                 with self.ds.lock:
                     cooldown_until = self.ds.patient_cooldown_until_ms
                     cooldown_active = bool(cooldown_until and cooldown_until > _now_ms())
                     if cooldown_active:
+                        cooldown_until_ms = int(cooldown_until or _now_ms())
+                        ready_in_sec = int((cooldown_until_ms - _now_ms() + 999) / 1000)
                         self.ds.deferred_patient_id = patient_id
+                        self.ds.pending_patient_source = source
                         self._log(
                             f"<< PatientBind deferred for cooldown (patient={patient_id}, "
-                            f"ready_in={int((cooldown_until - _now_ms() + 999) / 1000)}s)"
+                            f"ready_in={ready_in_sec}s)"
                         )
                     else:
                         self.ds.pending_patient_id = patient_id
+                        self.ds.pending_patient_source = source
                         self.ds.deferred_patient_id = None
-                        self._log(f"<< PatientBind pending decision (patient={patient_id})")
+                        self._log(f"<< PatientBind pending decision (patient={patient_id}, source={source or 'unknown'})")
             elif resp.HasField("patient_release"):
                 with self.ds.lock:
                     released_patient = resp.patient_release.patient_id
                     self.ds.patient_id = None
+                    self.ds.patient_source = None
                     self.ds.pending_patient_id = None
+                    self.ds.pending_patient_source = None
                     self.ds.deferred_patient_id = None
                     self.ds.patient_cooldown_until_ms = _now_ms() + 60000
+                    self.ds.current_state = "IDLE"
+                    self.ds.measurement_session_id = None
+                    self.ds.seq_no = DEFAULT_TICK_SEQ_NO
+                    self.ds.tick_index = 0
                 self._log(f"<< PatientRelease (patient={released_patient})")
             else:
                 self._log("<< Unknown response")
@@ -159,8 +183,14 @@ class DeviceRunner(threading.Thread):
             if not deferred:
                 return
             self.ds.pending_patient_id = deferred
+            self.ds.pending_patient_source = _classify_patient_source(deferred)
             self.ds.deferred_patient_id = None
         self._log(f"   PatientBind now pending decision (patient={deferred})")
+
+    def _has_accepted_patient(self) -> bool:
+        """True when manager-bound patient was accepted and moved to patient_id."""
+        with self.ds.lock:
+            return bool(self.ds.patient_id)
 
     def _send_and_wait_ack(self, msg, label: str, timeout: float = 5.0, expected_ack_type: str | None = None) -> bool:
         """Send a message and wait for the background reader to receive a response.
@@ -370,6 +400,9 @@ class DeviceRunner(threading.Thread):
 
         # If profile changed since standby, resend ProfileMetadata
         if profile_name and profile_name != existing_profile:
+            if not self._has_accepted_patient():
+                self._log("   Cannot resend ProfileMetadata before PatientBind is accepted")
+                return False
             self._log(f"   Profile changed ({existing_profile} → {profile_name}), resending ProfileMetadata")
             msg = self._build_profile_metadata(profile_name)
             param_count = len(msg.profile_metadata.params)
@@ -429,6 +462,9 @@ class DeviceRunner(threading.Thread):
             current = self.ds.current_state
 
         if current == "IDLE":
+            if not self._has_accepted_patient():
+                self._log("   Waiting for PatientBind acceptance before ProfileMetadata (patient_id not accepted yet)")
+                return False
             # IDLE → STANDBY: must send ProfileMetadata first
             pname = profile_name or "minimal"
             self._log(f"   IDLE → STANDBY: sending ProfileMetadata({pname}) first")
@@ -506,18 +542,23 @@ class DeviceRunner(threading.Thread):
                 self._log(f"    → Already IDLE, ignoring")
                 return True
             self._log(f"    → {current} → IDLE")
-            return self._transition_to_idle(cmd.get("reason", "ReturnToIdle"))
+            return self._transition_to_idle(cmd.get("reason", "StopCase"))
 
         elif cmd_type == "bind_patient":
             with self.ds.lock:
                 self.ds.patient_id = cmd.get("patient_id")
+                self.ds.patient_source = _classify_patient_source(self.ds.patient_id)
+                self.ds.pending_patient_id = None
+                self.ds.pending_patient_source = None
             self._log(f"    → Patient bound: {self.ds.patient_id}")
             return True
 
         elif cmd_type == "release_patient":
             with self.ds.lock:
                 self.ds.patient_id = None
+                self.ds.patient_source = None
                 self.ds.pending_patient_id = None
+                self.ds.pending_patient_source = None
             self._log(f"    → Patient released")
             return True
 
@@ -533,11 +574,14 @@ class DeviceRunner(threading.Thread):
             if decision == "accept":
                 with self.ds.lock:
                     self.ds.patient_id = pending
+                    self.ds.patient_source = self.ds.pending_patient_source or _classify_patient_source(pending)
                     self.ds.pending_patient_id = None
+                    self.ds.pending_patient_source = None
                 msg = self._build_state_event(current_state, "PatientID Accepted")
             elif decision == "reject":
                 with self.ds.lock:
                     self.ds.pending_patient_id = None
+                    self.ds.pending_patient_source = None
                 msg = self._build_state_event(current_state, "PatientID Rejected ")
             else:
                 self._log(f"    ✗ Unknown patient decision: {decision}")
@@ -559,6 +603,9 @@ class DeviceRunner(threading.Thread):
 
         elif cmd_type == "set_profile":
             profile = cmd.get("profile", "minimal")
+            if not self._has_accepted_patient():
+                self._log("    ✗ Cannot send ProfileMetadata before PatientBind is accepted")
+                return False
             msg = self._build_profile_metadata(profile)
             return self._send_and_wait_ack(
                 msg,

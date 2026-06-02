@@ -53,6 +53,8 @@ dist/
 build/
 *.egg-info/
 *.spec
+dist*/
+build*/
 
 # Test coverage
 .coverage
