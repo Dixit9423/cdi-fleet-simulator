@@ -577,21 +577,33 @@ class DeviceRunner(threading.Thread):
                     self.ds.patient_source = self.ds.pending_patient_source or _classify_patient_source(pending)
                     self.ds.pending_patient_id = None
                     self.ds.pending_patient_source = None
-                msg = self._build_state_event(current_state, "PatientID Accepted")
+                msg = self._build_state_event(current_state, "Patient ID Accepted")
+                return self._send_and_wait_ack(
+                    msg,
+                    f"CoreStateEvent({current_state}, patient_decision={decision})",
+                    expected_ack_type="CoreStateEvent",
+                )
             elif decision == "reject":
                 with self.ds.lock:
+                    # Rejection clears all local patient context so the device remains IDLE-only
+                    # until manager issues the next bind.
+                    self.ds.current_state = "IDLE"
+                    self.ds.patient_id = None
+                    self.ds.patient_source = None
                     self.ds.pending_patient_id = None
                     self.ds.pending_patient_source = None
-                msg = self._build_state_event(current_state, "PatientID Rejected ")
+                    self.ds.deferred_patient_id = None
+                    self.ds.patient_cooldown_until_ms = _now_ms() + 60000
+                reject_msg = self._build_state_event("IDLE", "Patient ID Rejected")
+                rejected_ok = self._send_and_wait_ack(
+                    reject_msg,
+                    "CoreStateEvent(IDLE, patient_decision=reject)",
+                    expected_ack_type="CoreStateEvent",
+                )
+                return rejected_ok
             else:
                 self._log(f"    ✗ Unknown patient decision: {decision}")
                 return False
-
-            return self._send_and_wait_ack(
-                msg,
-                f"CoreStateEvent({current_state}, patient_decision={decision})",
-                expected_ack_type="CoreStateEvent",
-            )
 
         elif cmd_type == "update_tick_data":
             pid = int(cmd.get("param_id", 0))
