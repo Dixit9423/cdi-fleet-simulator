@@ -1,273 +1,537 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CDI Fleet Simulator — Control Panel</title>
-<style>
-  :root {
-    --bg:       #0f1117;
-    --card:     #1a1d27;
-    --border:   #2a2d3a;
-    --text:     #e1e4ec;
-    --muted:    #8b8fa3;
-    --accent:   #3b82f6;
-    --green:    #22c55e;
-    --yellow:   #eab308;
-    --red:      #ef4444;
-    --orange:   #f97316;
-    --cyan:     #06b6d4;
-  }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: var(--bg); color: var(--text);
-    padding: 20px; min-height: 100vh;
-  }
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
-  }
-  header h1 { font-size: 1.4rem; font-weight: 600; }
-  header h1 span { color: var(--accent); }
-  .kpi-bar {
-    display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;
-  }
-  .kpi {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px 24px; min-width: 130px; text-align: center;
-  }
-  .kpi .value { font-size: 2rem; font-weight: 700; }
-  .kpi .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-  .kpi.measuring .value { color: var(--green); }
-  .kpi.idle .value { color: var(--yellow); }
-  .kpi.standby .value { color: var(--orange); }
-  .kpi.total .value { color: var(--accent); }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CDI Fleet Simulator — Control Panel</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --card: #1a1d27;
+        --border: #2a2d3a;
+        --text: #e1e4ec;
+        --muted: #8b8fa3;
+        --accent: #3b82f6;
+        --green: #22c55e;
+        --yellow: #eab308;
+        --red: #ef4444;
+        --orange: #f97316;
+        --cyan: #06b6d4;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 20px;
+        min-height: 100vh;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 {
+        font-size: 1.4rem;
+        font-weight: 600;
+      }
+      header h1 span {
+        color: var(--accent);
+      }
+      .kpi-bar {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .kpi {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px 24px;
+        min-width: 130px;
+        text-align: center;
+      }
+      .kpi .value {
+        font-size: 2rem;
+        font-weight: 700;
+      }
+      .kpi .label {
+        font-size: 0.75rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .kpi.measuring .value {
+        color: var(--green);
+      }
+      .kpi.idle .value {
+        color: var(--yellow);
+      }
+      .kpi.standby .value {
+        color: var(--orange);
+      }
+      .kpi.total .value {
+        color: var(--accent);
+      }
 
-  .grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
-    gap: 16px;
-  }
-  .device-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 20px; transition: border-color .2s;
-  }
-  .device-card:hover { border-color: var(--accent); }
-  .device-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 12px;
-  }
-  .device-id { font-size: 1.1rem; font-weight: 600; }
-  .badge {
-    display: inline-block; padding: 3px 10px; border-radius: 999px;
-    font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
-  }
-  .badge.MEASURING { background: rgba(34,197,94,.15); color: var(--green); }
-  .badge.IDLE      { background: rgba(234,179,8,.15);  color: var(--yellow); }
-  .badge.STANDBY   { background: rgba(249,115,22,.15); color: var(--orange); }
-  .badge.ERROR     { background: rgba(239,68,68,.15);  color: var(--red); }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+        gap: 16px;
+      }
+      .device-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        transition: border-color 0.2s;
+      }
+      .device-card:hover {
+        border-color: var(--accent);
+      }
+      .device-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .device-id {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+      .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .badge.MEASURING {
+        background: rgba(34, 197, 94, 0.15);
+        color: var(--green);
+      }
+      .badge.IDLE {
+        background: rgba(234, 179, 8, 0.15);
+        color: var(--yellow);
+      }
+      .badge.STANDBY {
+        background: rgba(249, 115, 22, 0.15);
+        color: var(--orange);
+      }
+      .badge.ERROR {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--red);
+      }
+      .api-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 700;
+      }
+      .api-badge.ok {
+        color: var(--green);
+        background: rgba(34, 197, 94, 0.15);
+      }
+      .api-badge.warn {
+        color: var(--yellow);
+        background: rgba(234, 179, 8, 0.15);
+      }
+      .api-badge.err {
+        color: var(--red);
+        background: rgba(239, 68, 68, 0.15);
+      }
+      .api-badge.info {
+        color: var(--accent);
+        background: rgba(59, 130, 246, 0.15);
+      }
 
-  .device-meta {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
-    font-size: 0.82rem; margin-bottom: 14px;
-  }
-  .device-meta span.label { color: var(--muted); }
-  .device-meta span.val { color: var(--text); }
+      .device-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 16px;
+        font-size: 0.82rem;
+        margin-bottom: 14px;
+      }
+      .device-meta span.label {
+        color: var(--muted);
+      }
+      .device-meta span.val {
+        color: var(--text);
+      }
 
-  .actions {
-    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;
-    padding-top: 12px; border-top: 1px solid var(--border);
-  }
-  button {
-    padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--bg); color: var(--text); cursor: pointer;
-    font-size: 0.78rem; font-weight: 500; transition: all .15s;
-  }
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.primary:hover { background: #2563eb; }
-  button.danger { border-color: var(--red); color: var(--red); }
-  button.danger:hover { background: rgba(239,68,68,.15); }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+      button {
+        padding: 6px 14px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        cursor: pointer;
+        font-size: 0.78rem;
+        font-weight: 500;
+        transition: all 0.15s;
+      }
+      button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      button.primary:hover {
+        background: #2563eb;
+      }
+      button.danger {
+        border-color: var(--red);
+        color: var(--red);
+      }
+      button.danger:hover {
+        background: rgba(239, 68, 68, 0.15);
+      }
 
-  select, input {
-    padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--bg); color: var(--text); font-size: 0.78rem;
-  }
+      select,
+      input {
+        padding: 5px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 0.78rem;
+      }
 
-  .status-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    margin-right: 6px; vertical-align: middle;
-  }
-  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .status-dot.disconnected { background: var(--red); }
+      .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      .status-dot.connected {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+      }
+      .status-dot.disconnected {
+        background: var(--red);
+      }
 
-  .refresh-info { font-size: 0.72rem; color: var(--muted); }
-  #toast {
-    position: fixed; bottom: 20px; right: 20px; padding: 12px 20px;
-    background: var(--accent); color: #fff; border-radius: 8px;
-    font-size: 0.85rem; display: none; z-index: 1000;
-    box-shadow: 0 4px 12px rgba(0,0,0,.4);
-  }
+      .refresh-info {
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      #toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: var(--accent);
+        color: #fff;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        display: none;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
 
-  .patient-state {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 0.74rem; font-weight: 600;
-    padding: 4px 9px; border-radius: 999px;
-    border: 1px solid var(--border);
-    margin-bottom: 10px;
-  }
-  .patient-state.bound { color: var(--green); border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.08); }
-  .patient-state.pending { color: var(--yellow); border-color: rgba(234,179,8,.45); background: rgba(234,179,8,.08); }
-  .patient-state.cooldown { color: var(--cyan); border-color: rgba(6,182,212,.45); background: rgba(6,182,212,.08); }
-  .patient-state.unbound { color: var(--muted); }
-  .patient-state .source-badge {
-    display: inline-block;
-    font-size: 0.66rem;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    margin-left: 4px;
-  }
-  .patient-state .source-badge.REAL {
-    color: var(--green);
-    border-color: rgba(34,197,94,.45);
-    background: rgba(34,197,94,.12);
-  }
-  .patient-state .source-badge.DUMMY {
-    color: var(--cyan);
-    border-color: rgba(6,182,212,.45);
-    background: rgba(6,182,212,.12);
-  }
-  .spinner {
-    width: 10px; height: 10px; border-radius: 50%;
-    border: 2px solid rgba(6,182,212,.35);
-    border-top-color: var(--cyan);
-    animation: spin .9s linear infinite;
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-</style>
-</head>
-<body>
+      .patient-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.74rem;
+        font-weight: 600;
+        padding: 4px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        margin-bottom: 10px;
+      }
+      .patient-state.bound {
+        color: var(--green);
+        border-color: rgba(34, 197, 94, 0.45);
+        background: rgba(34, 197, 94, 0.08);
+      }
+      .patient-state.pending {
+        color: var(--yellow);
+        border-color: rgba(234, 179, 8, 0.45);
+        background: rgba(234, 179, 8, 0.08);
+      }
+      .patient-state.cooldown {
+        color: var(--cyan);
+        border-color: rgba(6, 182, 212, 0.45);
+        background: rgba(6, 182, 212, 0.08);
+      }
+      .patient-state.unbound {
+        color: var(--muted);
+      }
+      .patient-state .source-badge {
+        display: inline-block;
+        font-size: 0.66rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        margin-left: 4px;
+      }
+      .patient-state .source-badge.REAL {
+        color: var(--green);
+        border-color: rgba(34, 197, 94, 0.45);
+        background: rgba(34, 197, 94, 0.12);
+      }
+      .patient-state .source-badge.DUMMY {
+        color: var(--cyan);
+        border-color: rgba(6, 182, 212, 0.45);
+        background: rgba(6, 182, 212, 0.12);
+      }
+      .spinner {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid rgba(6, 182, 212, 0.35);
+        border-top-color: var(--cyan);
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🏥 CDI <span>Fleet Simulator</span> — Control Panel</h1>
+      <div style="text-align: right">
+        <div
+          style="font-size: 0.72rem; color: var(--muted); margin-bottom: 4px"
+        >
+          Flow: <span style="color: var(--yellow)">IDLE</span> →
+          <span style="color: var(--orange)">STANDBY</span> →
+          <span style="color: var(--green)">MEASURING</span> →
+          <span style="color: var(--orange)">STANDBY</span> /
+          <span style="color: var(--yellow)">IDLE</span>
+        </div>
+        <span class="refresh-info"
+          >Auto-refresh: 5s | <span id="lastUpdate">—</span></span
+        >
+      </div>
+    </header>
 
-<header>
-  <h1>🏥 CDI <span>Fleet Simulator</span> — Control Panel</h1>
-  <div style="text-align:right">
-    <div style="font-size:0.72rem; color:var(--muted); margin-bottom:4px">
-      Flow: <span style="color:var(--yellow)">IDLE</span> →
-      <span style="color:var(--orange)">STANDBY</span> →
-      <span style="color:var(--green)">MEASURING</span> →
-      <span style="color:var(--orange)">STANDBY</span> /
-      <span style="color:var(--yellow)">IDLE</span>
+    <div class="kpi-bar" id="kpis"></div>
+    <div class="toolbar">
+      <button class="danger" onclick="stopSimulator()">Stop Simulator</button>
     </div>
-    <span class="refresh-info">Auto-refresh: 5s | <span id="lastUpdate">—</span></span>
-  </div>
-</header>
+    <div class="grid" id="deviceGrid"></div>
+    <div id="toast"></div>
 
-<div class="kpi-bar" id="kpis"></div>
-<div class="grid" id="deviceGrid"></div>
-<div id="toast"></div>
+    <script>
+      const API = ""; // same origin
 
-<script>
-const API = '';  // same origin
+      let profiles = {};
+      let lastFleetData = null; // Cache to prevent unnecessary DOM updates
+      let refreshErrors = 0; // Track consecutive errors to prevent spam
+      let maxRefreshErrors = 3; // Max errors before backing off
+      let refreshBackoffMs = 3000; // Start with 3s backoff
 
-let profiles = {};
-let lastFleetData = null;  // Cache to prevent unnecessary DOM updates
-let refreshErrors = 0;  // Track consecutive errors to prevent spam
-let maxRefreshErrors = 3;  // Max errors before backing off
-let refreshBackoffMs = 3000;  // Start with 3s backoff
+      async function fetchProfiles() {
+        try {
+          const r = await fetch(`${API}/api/profiles`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          profiles = await r.json();
+          console.log(
+            "[Fleet UI] Profiles loaded:",
+            Object.keys(profiles).length,
+          );
+        } catch (e) {
+          console.error("[Fleet UI] Failed to load profiles:", e);
+        }
+      }
 
-async function fetchProfiles() {
-  try {
-    const r = await fetch(`${API}/api/profiles`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    profiles = await r.json();
-    console.log('[Fleet UI] Profiles loaded:', Object.keys(profiles).length);
-  } catch(e) { 
-    console.error('[Fleet UI] Failed to load profiles:', e);
-  }
-}
+      function profileOptions() {
+        return Object.keys(profiles)
+          .map((n) => `<option value="${n}">${n}</option>`)
+          .join("");
+      }
 
-function profileOptions() {
-  return Object.keys(profiles).map(n => `<option value="${n}">${n}</option>`).join('');
-}
+      function toast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.style.display = "block";
+        setTimeout(() => (t.style.display = "none"), 3000);
+      }
 
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 3000);
-}
+      async function apiPost(url, body) {
+        try {
+          console.log("[Fleet UI] POST", url, JSON.stringify(body));
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const j = await r.json();
+          if (!r.ok) {
+            // Show server validation errors (e.g., state flow violations)
+            const detail = j.detail || j.message || `HTTP ${r.status}`;
+            console.warn("[Fleet UI] API rejected:", detail);
+            toast(`⚠ ${detail}`);
+            return;
+          }
+          console.log("[Fleet UI] Response:", j);
+          toast(`✓ ${j.status || "OK"}`);
+          // Refresh after a small delay to let server process
+          setTimeout(refresh, 500);
+        } catch (e) {
+          console.error("[Fleet UI] API error:", url, e);
+          toast(`✗ ${e.message}`);
+        }
+      }
 
-async function apiPost(url, body) {
-  try {
-    console.log('[Fleet UI] POST', url, JSON.stringify(body));
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body)
-    });
-    const j = await r.json();
-    if (!r.ok) {
-      // Show server validation errors (e.g., state flow violations)
-      const detail = j.detail || j.message || `HTTP ${r.status}`;
-      console.warn('[Fleet UI] API rejected:', detail);
-      toast(`⚠ ${detail}`);
-      return;
-    }
-    console.log('[Fleet UI] Response:', j);
-    toast(`✓ ${j.status || 'OK'}`);
-    // Refresh after a small delay to let server process
-    setTimeout(refresh, 500);
-  } catch(e) { 
-    console.error('[Fleet UI] API error:', url, e);
-    toast(`✗ ${e.message}`); 
-  }
-}
-
-function renderKPIs(summary) {
-  document.getElementById('kpis').innerHTML = `
+      function renderKPIs(summary) {
+        document.getElementById("kpis").innerHTML = `
     <div class="kpi total"><div class="value">${summary.total}</div><div class="label">Total</div></div>
     <div class="kpi measuring"><div class="value">${summary.connected}</div><div class="label">Connected</div></div>
     <div class="kpi measuring"><div class="value">${summary.measuring}</div><div class="label">Measuring</div></div>
     <div class="kpi idle"><div class="value">${summary.idle}</div><div class="label">Idle</div></div>
     <div class="kpi standby"><div class="value">${summary.standby}</div><div class="label">Standby</div></div>
   `;
-}
+      }
 
-function renderDevice(d) {
-  const connDot = d.connected ? 'connected' : 'disconnected';
-  const badgeState = d.error ? 'ERROR' : d.current_state;
-  const sessionInfo = d.measurement_session_id
-    ? `<span class="label">Session:</span> <span class="val">${d.measurement_session_id}</span>` : '';
-  const patientInfo = d.patient_id
-    ? `<span class="label">Patient:</span> <span class="val">${d.patient_id}</span>` : '';
-  const pendingPatientInfo = d.pending_patient_id
-    ? `<span class="label">Pending Patient:</span> <span class="val">${d.pending_patient_id}</span>` : '';
-  const patientSourceInfo = d.patient_source
-    ? `<span class="label">Patient Source:</span> <span class="val">${d.patient_source}</span>` : '';
-  const pendingPatientSourceInfo = d.pending_patient_source
-    ? `<span class="label">Pending Source:</span> <span class="val">${d.pending_patient_source}</span>` : '';
-  const tickInfo = d.current_state === 'MEASURING'
-    ? `<span class="label">Ticks:</span> <span class="val">${d.total_ticks_sent} (seq ${d.seq_no})</span>` : '';
-  const errorInfo = d.error
-    ? `<span class="label">Error:</span> <span class="val" style="color:var(--red)">${d.error}</span>` : '';
+      function renderEMRKPIs(summary) {
+        const devices = summary.devices || [];
+        const active = devices.filter((d) => d.active).length;
+        const waiting = devices.filter((d) => d.active && !d.patient_id).length;
+        const waitingMap = devices.filter(
+          (d) => d.active && !!d.patient_id && !d.mapped_device_id,
+        ).length;
+        const assigned = devices.filter(
+          (d) => !!d.patient_id && !!d.mapped_device_id,
+        ).length;
+        const dryRun = summary.dry_run ? "ON" : "OFF";
 
-  let patientIndicator = `<div class="patient-state unbound">Patient: Unbound</div>`;
-  if (d.patient_id) {
-    const srcBadge = d.patient_source ? `<span class="source-badge ${d.patient_source}">${d.patient_source}</span>` : '';
-    patientIndicator = `<div class="patient-state bound">🟢 Patient Bound ${srcBadge}</div>`;
-  } else if (d.pending_patient_id) {
-    const pendingSrcBadge = d.pending_patient_source ? `<span class="source-badge ${d.pending_patient_source}">${d.pending_patient_source}</span>` : '';
-    patientIndicator = `<div class="patient-state pending">🟡 Patient Decision Required ${pendingSrcBadge}</div>`;
-  } else if ((d.cooldown_remaining_sec || 0) > 0) {
-    patientIndicator = `<div class="patient-state cooldown"><span class="spinner"></span>Next patient ID in ${d.cooldown_remaining_sec}s</div>`;
-  }
+        document.getElementById("kpis").innerHTML = `
+    <div class="kpi total"><div class="value">${devices.length}</div><div class="label">EMR Devices</div></div>
+    <div class="kpi measuring"><div class="value">${active}</div><div class="label">Active</div></div>
+    <div class="kpi idle"><div class="value">${waiting}</div><div class="label">Waiting Patient</div></div>
+    <div class="kpi standby"><div class="value">${waitingMap}</div><div class="label">Waiting Mapping</div></div>
+    <div class="kpi measuring"><div class="value">${assigned}</div><div class="label">Mapped</div></div>
+    <div class="kpi total"><div class="value">${dryRun}</div><div class="label">Dry Run</div></div>
+  `;
+      }
 
-  return `
+      function emrStatusView(rawStatus) {
+        const status = String(rawStatus || "idle");
+        if (status === "waiting_for_patient")
+          return { text: "Waiting for patient", cls: "warn" };
+        if (status === "waiting_for_device_assignment")
+          return { text: "Waiting for device assignment", cls: "warn" };
+        if (status === "waiting_for_mapping")
+          return { text: "Waiting for mapping", cls: "warn" };
+        if (status === "patient_and_device_mapped")
+          return { text: "Patient and device mapped", cls: "ok" };
+        if (status === "running") return { text: "Runner active", cls: "info" };
+        if (status === "dry_run_ok")
+          return { text: "Dry-run POST ok", cls: "ok" };
+        if (status.startsWith("http_"))
+          return {
+            text: `Posted (${status.replace("http_", "HTTP ")})`,
+            cls: "ok",
+          };
+        const low = status.toLowerCase();
+        if (
+          low.includes("error") ||
+          low.includes("fail") ||
+          low.includes("exception")
+        ) {
+          return { text: `Error: ${status}`, cls: "err" };
+        }
+        return { text: status, cls: "info" };
+      }
+
+      function emrTimeAgo(ts) {
+        if (!ts) return "";
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return "";
+        const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (sec < 1) return "";
+        if (sec < 60) return `(${sec}s ago)`;
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `(${min}m ago)`;
+        const hr = Math.floor(min / 60);
+        return `(${hr}h ago)`;
+      }
+
+      function renderDevice(d) {
+        const connDot = d.connected ? "connected" : "disconnected";
+        const badgeState = d.error ? "ERROR" : d.current_state;
+        const sessionInfo = d.measurement_session_id
+          ? `<span class="label">Session:</span> <span class="val">${d.measurement_session_id}</span>`
+          : "";
+        const patientInfo = d.patient_id
+          ? `<span class="label">Patient:</span> <span class="val">${d.patient_id}</span>`
+          : "";
+        const pendingPatientInfo = d.pending_patient_id
+          ? `<span class="label">Pending Patient:</span> <span class="val">${d.pending_patient_id}</span>`
+          : "";
+        const patientSourceInfo = d.patient_source
+          ? `<span class="label">Patient Source:</span> <span class="val">${d.patient_source}</span>`
+          : "";
+        const pendingPatientSourceInfo = d.pending_patient_source
+          ? `<span class="label">Pending Source:</span> <span class="val">${d.pending_patient_source}</span>`
+          : "";
+        const tickInfo =
+          d.current_state === "MEASURING"
+            ? `<span class="label">Ticks:</span> <span class="val">${d.total_ticks_sent} (seq ${d.seq_no})</span>`
+            : "";
+        const errorInfo = d.error
+          ? `<span class="label">Error:</span> <span class="val" style="color:var(--red)">${d.error}</span>`
+          : "";
+
+        let patientIndicator = `<div class="patient-state unbound">Patient: Unbound</div>`;
+        if (d.patient_id) {
+          const srcBadge = d.patient_source
+            ? `<span class="source-badge ${d.patient_source}">${d.patient_source}</span>`
+            : "";
+          patientIndicator = `<div class="patient-state bound">🟢 Patient Bound ${srcBadge}</div>`;
+        } else if (d.pending_patient_id) {
+          const pendingSrcBadge = d.pending_patient_source
+            ? `<span class="source-badge ${d.pending_patient_source}">${d.pending_patient_source}</span>`
+            : "";
+          patientIndicator = `<div class="patient-state pending">🟡 Patient Decision Required ${pendingSrcBadge}</div>`;
+        } else if ((d.cooldown_remaining_sec || 0) > 0) {
+          patientIndicator = `<div class="patient-state cooldown"><span class="spinner"></span>Next patient ID in ${d.cooldown_remaining_sec}s</div>`;
+        }
+
+        return `
     <div class="device-card" data-device-id="${d.device_id}">
       <div class="device-header">
         <span class="device-id">
@@ -281,7 +545,7 @@ function renderDevice(d) {
         <span class="label">Serial:</span>  <span class="val">${d.serial}</span>
         <span class="label">Site:</span>    <span class="val">${d.site}</span>
         <span class="label">Version:</span> <span class="val">${d.sw_version}</span>
-        <span class="label">Profile:</span> <span class="val">${d.profile_name || '—'}</span>
+        <span class="label">Profile:</span> <span class="val">${d.profile_name || "—"}</span>
         ${patientInfo}
         ${patientSourceInfo}
         ${pendingPatientInfo}
@@ -291,136 +555,263 @@ function renderDevice(d) {
         ${errorInfo}
       </div>
       <div class="actions">
-        ${d.current_state === 'IDLE' ? `
+        ${
+          d.current_state === "IDLE"
+            ? `
           <!-- IDLE: Select profile → go to Standby -->
           <select id="prof_${d.device_id}" class="profile-select" onchange="profileChanged(this, '${d.device_id}')">
             ${profileOptions()}
           </select>
           <button class="primary" onclick="toStandby('${d.device_id}', '${d.current_state}')">⏸ Standby</button>
-        ` : ''}
-        ${d.current_state === 'STANDBY' ? `
+        `
+            : ""
+        }
+        ${
+          d.current_state === "STANDBY"
+            ? `
           <!-- STANDBY: Start measuring or go back to Idle -->
           <button class="primary" onclick="startMeasuring('${d.device_id}')">▶ Start Measuring</button>
           <button onclick="toIdle('${d.device_id}')">↩ Idle</button>
-        ` : ''}
-        ${d.current_state === 'MEASURING' ? `
+        `
+            : ""
+        }
+        ${
+          d.current_state === "MEASURING"
+            ? `
           <!-- MEASURING: Stop (→Idle) or Standby -->
           <button class="danger" onclick="stopMeasuring('${d.device_id}')">■ Stop → Idle</button>
           <button onclick="toStandby('${d.device_id}', '${d.current_state}')">⏸ Standby</button>
-          ${!d.patient_id ? `
+          ${
+            !d.patient_id
+              ? `
             <input id="bind_${d.device_id}" placeholder="PAT-ID" style="width:100px" class="bind-input" />
             <button onclick="bindPatient('${d.device_id}')">🔗 Bind</button>
-          ` : ''}
-        ` : ''}
-        ${d.pending_patient_id ? `
+          `
+              : ""
+          }
+        `
+            : ""
+        }
+        ${
+          d.pending_patient_id
+            ? `
           <button class="primary" onclick="patientDecision('${d.device_id}', 'accept')">✅ Accept Patient</button>
           <button class="danger" onclick="patientDecision('${d.device_id}', 'reject')">❌ Reject Patient</button>
-        ` : ''}
+        `
+            : ""
+        }
       </div>
     </div>
   `;
-}
+      }
 
-async function refresh() {
-  try {
-    const r = await fetch(`${API}/api/fleet/summary`);
-    
-    // Handle HTTP errors
-    if (!r.ok) {
-      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-    }
-    
-    const data = await r.json();
-    
-    // Check if data has actually changed to minimize DOM updates
-    const dataStr = JSON.stringify(data);
-    if (lastFleetData === dataStr) {
-      // Data unchanged, skip DOM update but reset error counter
-      refreshErrors = 0;
-      return;
-    }
-    lastFleetData = dataStr;
-    
-    renderKPIs(data);
-    document.getElementById('deviceGrid').innerHTML = data.devices.map(renderDevice).join('');
-    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-    
-    // Reset error counter on success
-    refreshErrors = 0;
-  } catch(e) {
-    refreshErrors++;
-    if (refreshErrors <= 2) {
-      // Only log first 2 errors to avoid spam
-      console.error('[Fleet UI] Refresh failed:', e, `(attempt ${refreshErrors})`);
-    }
-    
-    // Show warning toast only on first error
-    if (refreshErrors === 1) {
-      toast(`⚠ API not responding (${e.message})`);
-    }
-  }
-}
+      function renderEMRDevice(d) {
+        const status = d.active ? "MEASURING" : "IDLE";
+        const statusLabel = d.active ? "ACTIVE" : "STOPPED";
+        const patientId = d.patient_id || "Not Assigned";
+        const lastSent = d.last_sent
+          ? `${d.last_sent} ${emrTimeAgo(d.last_sent)}`
+          : "--";
+        const map = d.parameters?.map ?? "--";
+        const hr = d.parameters?.heart_rate ?? "--";
+        const etco2 = d.parameters?.etco2 ?? "--";
+        const apiStatus = emrStatusView(d.last_payload_status || "idle");
+        const lookupDevice = d.lookup_device_id || d.device_id || "--";
+        const mappedDevice = d.mapped_device_id || "--";
+        const lastError = d.last_error
+          ? `<span class="label">Last Error:</span> <span class="val" style="color:var(--red)">${d.last_error}</span>`
+          : "";
 
-// Prevent profile dropdown from triggering page refresh
-function profileChanged(select, deviceId) {
-  // Just log, don't trigger any action
-  console.log('[Fleet UI] Profile selected:', select.value, 'for device:', deviceId);
-  // User will click Start button when ready
-}
+        return `
+    <div class="device-card" data-device-id="${d.device_id}">
+      <div class="device-header">
+        <span class="device-id">${d.device_id}</span>
+        <span class="badge ${status}">${statusLabel}</span>
+      </div>
 
-function startMeasuring(id) {
-  // Start from STANDBY using manager-bound patient context
-  console.log('[Fleet UI] Starting measurement, device:', id);
-  apiPost(`${API}/api/devices/${id}/state`, { state: 'MEASURING' });
-}
+      <div class="device-meta">
+        <span class="label">Mode:</span> <span class="val">EMR Simulator</span>
+        <span class="label">Case:</span> <span class="val">${d.case || "within_range"}</span>
+        <span class="label">Patient:</span> <span class="val">${patientId}</span>
+        <span class="label">Lookup Device:</span> <span class="val">${lookupDevice}</span>
+        <span class="label">Mapped Device:</span> <span class="val">${mappedDevice}</span>
+        <span class="label">Last Sent:</span> <span class="val">${lastSent}</span>
+        <span class="label">API Status:</span> <span class="val"><span class="api-badge ${apiStatus.cls}">${apiStatus.text}</span></span>
+        ${lastError}
+      </div>
 
-function stopMeasuring(id) {
-  console.log('[Fleet UI] Stopping device → IDLE:', id);
-  apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'StopCase' });
-}
+      <div class="device-meta">
+        <span class="label">MAP:</span> <span class="val">${map} mmHg</span>
+        <span class="label">HR:</span> <span class="val">${hr} bpm</span>
+        <span class="label">EtCO2:</span> <span class="val">${etco2} mmHg</span>
+      </div>
 
-function toStandby(id, fromState) {
-  // From IDLE: include selected profile so ProfileMetadata is sent
-  // From MEASURING: profile is already active
-  const profSelect = document.getElementById(`prof_${id}`);
-  const profile = profSelect ? profSelect.value : undefined;
-  const reason = fromState === 'MEASURING' ? 'StandByCase' : 'SetProfile';
-  console.log('[Fleet UI] → Standby device:', id, 'profile:', profile, 'reason:', reason);
-  apiPost(`${API}/api/devices/${id}/state`, {
-    state: 'STANDBY', reason, profile: profile || undefined
-  });
-}
+      <div class="actions">
+        <select id="emrCase_${d.device_id}">
+          <option value="within_range" ${d.case === "within_range" ? "selected" : ""}>within range</option>
+          <option value="outside_range" ${d.case === "outside_range" ? "selected" : ""}>outside range</option>
+          <option value="low_limit" ${d.case === "low_limit" ? "selected" : ""}>low limit</option>
+          <option value="high_limit" ${d.case === "high_limit" ? "selected" : ""}>high limit</option>
+          <option value="mixed" ${d.case === "mixed" ? "selected" : ""}>mixed</option>
+        </select>
+        ${
+          !d.active
+            ? `<button class="primary" onclick="startEMR('${d.device_id}')">▶ Start</button>`
+            : `<button class="danger" onclick="stopEMR('${d.device_id}')">■ Stop</button>`
+        }
+      </div>
+    </div>
+  `;
+      }
 
-function toIdle(id) {
-  console.log('[Fleet UI] → Idle device:', id);
-  apiPost(`${API}/api/devices/${id}/state`, { state: 'IDLE', reason: 'StopCase' });
-}
+      async function refresh() {
+        try {
+          const r = await fetch(`${API}/api/fleet/summary`);
 
-function bindPatient(id) {
-  const pat = document.getElementById(`bind_${id}`)?.value;
-  if (!pat) { 
-    toast('⚠ Enter a patient ID'); 
-    return; 
-  }
-  apiPost(`${API}/api/devices/${id}/patient`, { action: 'bind', patient_id: pat });
-}
+          // Handle HTTP errors
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
 
-function patientDecision(id, decision) {
-  apiPost(`${API}/api/devices/${id}/patient-decision`, { decision });
-}
+          const data = await r.json();
 
-// ── Init ─────────────────────────────────────────────────────────────────
-console.log('[Fleet UI] Initializing...');
-fetchProfiles();
+          // Check if data has actually changed to minimize DOM updates
+          const dataStr = JSON.stringify(data);
+          if (lastFleetData === dataStr) {
+            refreshErrors = 0;
+            return;
+          }
+          lastFleetData = dataStr;
+          renderKPIs(data);
+          document.getElementById("deviceGrid").innerHTML = data.devices
+            .map(renderDevice)
+            .join("");
 
-// Start with 5s initial refresh to give API time to start
-setTimeout(() => {
-  console.log('[Fleet UI] Starting refresh loop (5s interval)');
-  refresh();
-  setInterval(refresh, 5000);  // Increased from 3s to 5s, gives API more time to respond
-}, 1000);
+          document.getElementById("lastUpdate").textContent =
+            new Date().toLocaleTimeString();
 
-console.log('[Fleet UI] Ready - waiting for API...');
-</script>
-</body>
+          // Reset error counter on success
+          refreshErrors = 0;
+        } catch (e) {
+          refreshErrors++;
+          if (refreshErrors <= 2) {
+            // Only log first 2 errors to avoid spam
+            console.error(
+              "[Fleet UI] Refresh failed:",
+              e,
+              `(attempt ${refreshErrors})`,
+            );
+          }
+
+          // Show warning toast only on first error
+          if (refreshErrors === 1) {
+            toast(`⚠ API not responding (${e.message})`);
+          }
+        }
+      }
+
+      // Prevent profile dropdown from triggering page refresh
+      function profileChanged(select, deviceId) {
+        // Just log, don't trigger any action
+        console.log(
+          "[Fleet UI] Profile selected:",
+          select.value,
+          "for device:",
+          deviceId,
+        );
+        // User will click Start button when ready
+      }
+
+      function startMeasuring(id) {
+        // Start from STANDBY using manager-bound patient context
+        console.log("[Fleet UI] Starting measurement, device:", id);
+        apiPost(`${API}/api/devices/${id}/state`, { state: "MEASURING" });
+      }
+
+      function stopMeasuring(id) {
+        console.log("[Fleet UI] Stopping device → IDLE:", id);
+        apiPost(`${API}/api/devices/${id}/state`, {
+          state: "IDLE",
+          reason: "StopCase",
+        });
+      }
+
+      function toStandby(id, fromState) {
+        // From IDLE: include selected profile so ProfileMetadata is sent
+        // From MEASURING: profile is already active
+        const profSelect = document.getElementById(`prof_${id}`);
+        const profile = profSelect ? profSelect.value : undefined;
+        const reason = fromState === "MEASURING" ? "StandByCase" : "SetProfile";
+        console.log(
+          "[Fleet UI] → Standby device:",
+          id,
+          "profile:",
+          profile,
+          "reason:",
+          reason,
+        );
+        apiPost(`${API}/api/devices/${id}/state`, {
+          state: "STANDBY",
+          reason,
+          profile: profile || undefined,
+        });
+      }
+
+      function toIdle(id) {
+        console.log("[Fleet UI] → Idle device:", id);
+        apiPost(`${API}/api/devices/${id}/state`, {
+          state: "IDLE",
+          reason: "StopCase",
+        });
+      }
+
+      function bindPatient(id) {
+        const pat = document.getElementById(`bind_${id}`)?.value;
+        if (!pat) {
+          toast("⚠ Enter a patient ID");
+          return;
+        }
+        apiPost(`${API}/api/devices/${id}/patient`, {
+          action: "bind",
+          patient_id: pat,
+        });
+      }
+
+      function patientDecision(id, decision) {
+        apiPost(`${API}/api/devices/${id}/patient-decision`, { decision });
+      }
+
+      function stopSimulator() {
+        const ok = confirm(
+          "This will stop CDI simulator and end this process. Continue?",
+        );
+        if (!ok) return;
+        apiPost(`${API}/api/system/stop`, {});
+      }
+
+      function startEMR(device_id) {
+        const caseName =
+          document.getElementById(`emrCase_${device_id}`)?.value ||
+          "within_range";
+        apiPost(`${API}/api/emr/${device_id}/start`, { case: caseName });
+      }
+
+      function stopEMR(device_id) {
+        apiPost(`${API}/api/emr/${device_id}/stop`, {});
+      }
+
+      // ── Init ─────────────────────────────────────────────────────────────────
+      console.log("[Fleet UI] Initializing...");
+      fetchProfiles();
+
+      // Start with 5s initial refresh to give API time to start
+      setTimeout(() => {
+        console.log("[Fleet UI] Starting refresh loop (5s interval)");
+        refresh();
+        setInterval(refresh, 5000); // Increased from 3s to 5s, gives API more time to respond
+      }, 1000);
+
+      console.log("[Fleet UI] Ready - waiting for API...");
+    </script>
+  </body>
 </html>

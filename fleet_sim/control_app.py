@@ -30,6 +30,8 @@ from typing import Optional
 # Will be set by run_fleet.py before starting
 _store = None
 _profiles = None
+_emr_service = None
+_shutdown_callback = None
 
 
 def set_store(store):
@@ -40,6 +42,16 @@ def set_store(store):
 def set_profiles(profiles):
     global _profiles
     _profiles = profiles
+
+
+def set_emr_service(emr_service):
+    global _emr_service
+    _emr_service = emr_service
+
+
+def set_shutdown_callback(callback):
+    global _shutdown_callback
+    _shutdown_callback = callback
 
 
 app = FastAPI(
@@ -100,6 +112,59 @@ def list_profiles():
         }
         for name, p in _profiles.items()
     }
+
+
+# ── API: EMR Simulator ─────────────────────────────────────────────────────
+
+class EMRStartRequest(BaseModel):
+    case: Optional[str] = None
+
+
+@app.get("/api/emr/devices")
+def get_emr_devices():
+    if not _emr_service:
+        return {"devices": [], "enabled": False, "message": "EMR simulator is not enabled"}
+    payload = _emr_service.list_devices()
+    payload["enabled"] = True
+    payload["dry_run"] = _emr_service.dry_run_mode
+    return payload
+
+
+@app.post("/api/emr/{device_id}/start")
+def start_emr_device(device_id: str, req: EMRStartRequest):
+    if not _emr_service:
+        raise HTTPException(503, "EMR simulator is not enabled")
+
+    if req.case:
+        ok = _emr_service.set_case(device_id, req.case)
+        if not ok:
+            raise HTTPException(400, "Invalid case or device")
+
+    if not _emr_service.start_device(device_id):
+        raise HTTPException(404, f"EMR device {device_id} not found")
+
+    return {
+        "status": "started",
+        "device_id": device_id,
+        "case": req.case,
+    }
+
+
+@app.post("/api/emr/{device_id}/stop")
+def stop_emr_device(device_id: str):
+    if not _emr_service:
+        raise HTTPException(503, "EMR simulator is not enabled")
+    if not _emr_service.stop_device(device_id):
+        raise HTTPException(404, f"EMR device {device_id} not found")
+    return {"status": "stopped", "device_id": device_id}
+
+
+@app.post("/api/emr/clear-data")
+def clear_emr_runtime_data():
+    if not _emr_service:
+        raise HTTPException(503, "EMR simulator is not enabled")
+    cleared = _emr_service.clear_runtime_data()
+    return {"status": "cleared", "devices_cleared": cleared}
 
 
 # ── API: Single Device ──────────────────────────────────────────────────────
@@ -246,12 +311,31 @@ def update_tick_data(device_id: str, req: TickDataRequest):
     return {"status": "queued", "device_id": device_id, "command": cmd}
 
 
+@app.post("/api/system/stop")
+def stop_simulator_process():
+    """Gracefully request simulator shutdown."""
+    if _shutdown_callback:
+        _shutdown_callback()
+
+        # Graceful path can take time with many device threads/reconnect loops.
+        # Force-exit as a safety net so operator stop from UI always completes.
+        def _force_exit_later():
+            time.sleep(6)
+            os._exit(0)
+
+        threading.Thread(target=_force_exit_later, daemon=True).start()
+        return {"status": "shutdown_requested", "force_exit_in_sec": 6}
+    raise HTTPException(503, "Shutdown callback not configured")
+
+
 # ── Run helper ───────────────────────────────────────────────────────────────
 
-def start_control_panel(store, profiles, port: int = 8090):
+def start_control_panel(store, profiles, port: int = 8090, emr_service=None, shutdown_callback=None):
     """Start the control panel on a daemon thread."""
     set_store(store)
     set_profiles(profiles)
+    set_emr_service(emr_service)
+    set_shutdown_callback(shutdown_callback)
 
     def _run():
         uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")

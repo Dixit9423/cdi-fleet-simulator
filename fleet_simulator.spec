@@ -30,6 +30,7 @@ TEMPLATES_DIR = os.path.join(SPEC_DIR, 'fleet_sim', 'templates')
 datas = [
     # HTML templates → fleet_sim/templates/
     (os.path.join(TEMPLATES_DIR, 'control_panel.html'), os.path.join('fleet_sim', 'templates')),
+    (os.path.join(TEMPLATES_DIR, 'emr_control_panel.html'), os.path.join('fleet_sim', 'templates')),
     # Proto stubs → top-level (run_fleet.py adds proto dir to sys.path)
     (os.path.join(PROTO_DIR, 'telemetry_pb2.py'), '.'),
     (os.path.join(PROTO_DIR, 'telemetry_pb2_grpc.py'), '.'),

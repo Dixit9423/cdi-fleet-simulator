@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EMR Hemodynamic Simulator</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --card: #1a1d27;
+        --border: #2a2d3a;
+        --text: #e1e4ec;
+        --muted: #8b8fa3;
+        --accent: #06b6d4;
+        --green: #22c55e;
+        --yellow: #eab308;
+        --red: #ef4444;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 20px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 14px;
+        margin-bottom: 18px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.4rem;
+      }
+      h1 span {
+        color: var(--accent);
+      }
+      .info {
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .flow-strip {
+        margin-bottom: 12px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .flow-title {
+        font-size: 0.72rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        letter-spacing: 0.4px;
+      }
+      .flow-line {
+        font-size: 0.82rem;
+        color: var(--text);
+        white-space: nowrap;
+        overflow-x: auto;
+      }
+      .kpis {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .help-box {
+        margin-bottom: 12px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.8rem;
+        color: var(--text);
+      }
+      .help-box summary {
+        cursor: pointer;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .help-grid {
+        margin-top: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 12px;
+      }
+      .help-label {
+        color: var(--muted);
+      }
+      .kpi {
+        min-width: 130px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .kpi .v {
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+      .kpi .l {
+        font-size: 0.72rem;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(390px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .badge {
+        border-radius: 999px;
+        padding: 2px 9px;
+        font-size: 0.7rem;
+        font-weight: 700;
+      }
+      .badge.active {
+        background: rgba(34, 197, 94, 0.15);
+        color: var(--green);
+      }
+      .badge.stopped {
+        background: rgba(234, 179, 8, 0.15);
+        color: var(--yellow);
+      }
+      .patient-badge {
+        display: inline-block;
+        margin-bottom: 8px;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+      .patient-badge.mapped {
+        background: rgba(34, 197, 94, 0.15);
+        color: var(--green);
+      }
+      .patient-badge.unmapped {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--red);
+        border: 1px solid rgba(239, 68, 68, 0.35);
+      }
+      .api-badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+      .api-badge.ok {
+        color: var(--green);
+        background: rgba(34, 197, 94, 0.15);
+      }
+      .api-badge.warn {
+        color: var(--yellow);
+        background: rgba(234, 179, 8, 0.15);
+      }
+      .api-badge.err {
+        color: var(--red);
+        background: rgba(239, 68, 68, 0.15);
+      }
+      .api-badge.info {
+        color: var(--accent);
+        background: rgba(6, 182, 212, 0.15);
+      }
+      .api-status-text.ok {
+        color: var(--green);
+      }
+      .api-status-text.warn {
+        color: var(--yellow);
+      }
+      .api-status-text.err {
+        color: var(--red);
+      }
+      .api-status-text.info {
+        color: var(--accent);
+      }
+      .meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 10px;
+        font-size: 0.82rem;
+        margin-bottom: 10px;
+      }
+      .label {
+        color: var(--muted);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      .section-title {
+        margin-top: 8px;
+        margin-bottom: 4px;
+        font-size: 0.76rem;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      button,
+      select {
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 0.8rem;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      button.danger {
+        border-color: var(--red);
+        color: var(--red);
+      }
+      #toast {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        display: none;
+        background: var(--accent);
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><span>EMR</span> Hemodynamic Simulator</h1>
+      <div class="info">Auto-refresh: 5s | <span id="lastUpdate">—</span></div>
+    </header>
+
+    <div class="flow-strip">
+      <div class="flow-title">Flow Overview</div>
+      <div class="flow-line">
+        Simulator Start -> (Optional) Check Patient pre-validation -> Start
+        Device -> Get Patient by Identifier -> Get Device Assignment -> Validate
+        Patient + Device Mapping -> Generate Hemodynamics -> POST to EMR (every
+        send interval)
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+    <details class="help-box">
+      <summary>What do these terms mean?</summary>
+      <div class="help-grid">
+        <span class="help-label">Dry Run</span
+        ><span>No real EMR DB write. Send loop is simulated.</span>
+        <span class="help-label">Refresh</span
+        ><span>Immediate UI fetch from /api/emr/devices.</span>
+        <span class="help-label">Case</span
+        ><span
+          >Value behavior style (within_range, low_limit, mixed, etc.).</span
+        >
+        <span class="help-label">Profile</span
+        ><span>Clinical template with targets and phase sequence.</span>
+        <span class="help-label">Phase</span
+        ><span>Current stage inside the selected profile timeline.</span>
+        <span class="help-label">Waiting for patient</span
+        ><span>Identifier lookup has not returned a patient yet.</span>
+        <span class="help-label">Waiting for device assignment</span
+        ><span>Patient found, device assignment row still unresolved.</span>
+        <span class="help-label">Check Patient button</span
+        ><span
+          >Optional pre-check only. Start performs the same patient and device
+          assignment checks.</span
+        >
+        <span class="help-label">Posted (HTTP ...)</span
+        ><span>Live mode POST to EMR succeeded.</span>
+      </div>
+    </details>
+    <div class="toolbar">
+      <button onclick="refresh()">Refresh</button>
+      <button onclick="clearRuntimeData()">Clear Runtime Data</button>
+      <button class="danger" onclick="stopAllEMR()">Stop All Devices</button>
+      <button class="danger" onclick="shutdownSimulator()">
+        Stop Simulator Process
+      </button>
+    </div>
+    <div class="grid" id="deviceGrid"></div>
+    <div id="toast"></div>
+
+    <script>
+      const API = "";
+      let lastData = null;
+
+      function toast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.style.display = "block";
+        setTimeout(() => (t.style.display = "none"), 2500);
+      }
+
+      async function apiPost(url, body) {
+        try {
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const j = await r.json();
+          if (!r.ok) {
+            toast(`Error: ${j.detail || r.status}`);
+            return;
+          }
+          toast(`OK: ${j.status || "done"}`);
+          setTimeout(refresh, 400);
+        } catch (e) {
+          toast(`Error: ${e.message}`);
+        }
+      }
+
+      function statusView(rawStatus) {
+        const status = String(rawStatus || "idle");
+        if (status === "waiting_for_patient") {
+          return { text: "Waiting for patient", cls: "warn" };
+        }
+        if (status === "waiting_for_device_assignment") {
+          return { text: "Waiting for device assignment", cls: "warn" };
+        }
+        if (status === "waiting_for_mapping") {
+          return { text: "Waiting for patient/device mapping", cls: "warn" };
+        }
+        if (status === "patient_and_device_mapped") {
+          return { text: "Patient and device mapped", cls: "ok" };
+        }
+        if (status === "running") {
+          return { text: "Runner active", cls: "info" };
+        }
+        if (status.startsWith("http_")) {
+          return {
+            text: `Posted (${status.replace("http_", "HTTP ")})`,
+            cls: "ok",
+          };
+        }
+        if (status === "dry_run_ok") {
+          return { text: "Dry-run POST ok", cls: "ok" };
+        }
+        if (status === "stopped") {
+          return { text: "Stopped", cls: "info" };
+        }
+        const low = status.toLowerCase();
+        if (
+          low.includes("error") ||
+          low.includes("fail") ||
+          low.includes("exception")
+        ) {
+          return { text: status, cls: "err" };
+        }
+        return { text: status, cls: "info" };
+      }
+
+      function timeAgo(ts) {
+        if (!ts) return "";
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return "";
+        const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (sec < 1) return "";
+        if (sec < 60) return `(${sec}s ago)`;
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `(${min}m ago)`;
+        const hr = Math.floor(min / 60);
+        return `(${hr}h ago)`;
+      }
+
+      function renderKPIs(data) {
+        const devices = data.devices || [];
+        const active = devices.filter((d) => d.active).length;
+        const waitingPatient = devices.filter(
+          (d) => (d.last_payload_status || "") === "waiting_for_patient",
+        ).length;
+        const waitingMap = devices.filter(
+          (d) =>
+            (d.last_payload_status || "") === "waiting_for_device_assignment",
+        ).length;
+        const mapped = devices.filter(
+          (d) => !!d.patient_id && !!d.mapped_device_id,
+        ).length;
+
+        document.getElementById("kpis").innerHTML = `
+    <div class="kpi"><div class="v">${devices.length}</div><div class="l">Devices</div></div>
+    <div class="kpi"><div class="v">${active}</div><div class="l">Active</div></div>
+    <div class="kpi"><div class="v">${waitingPatient}</div><div class="l">Waiting Patient</div></div>
+    <div class="kpi"><div class="v">${waitingMap}</div><div class="l">Waiting Mapping</div></div>
+    <div class="kpi"><div class="v">${mapped}</div><div class="l">Mapped</div></div>
+    <div class="kpi"><div class="v">${data.dry_run ? "ON" : "OFF"}</div><div class="l">Dry Run</div></div>
+  `;
+      }
+
+      function renderDevice(d) {
+        const statusClass = d.active ? "active" : "stopped";
+        const statusText = d.active ? "ACTIVE" : "STOPPED";
+        const map = d.parameters?.map ?? "--";
+        const hr = d.parameters?.heart_rate ?? "--";
+        const sbp = d.parameters?.systolic_bp ?? "--";
+        const dbp = d.parameters?.diastolic_bp ?? "--";
+        const etco2 = d.parameters?.etco2 ?? "--";
+        const arterialFlow = d.parameters?.arterial_flow ?? "--";
+        const sweep = d.parameters?.sweep ?? "--";
+        const fio2 = d.parameters?.fio2 ?? "--";
+        const rso2 = d.parameters?.rso2 ?? "--";
+        const act = d.parameters?.act ?? "--";
+        const lactate = d.parameters?.lactate ?? "--";
+        const glucose = d.parameters?.glucose ?? "--";
+        const status = statusView(d.last_payload_status || "idle");
+        const caseName = d.case || "within_range";
+        const profile = d.profile || "hemo_monitor_baseline";
+        const phase = d.phase || "baseline";
+        const patientMapped = !!d.patient_id && !!d.mapped_device_id;
+        const patientBadgeClass = patientMapped ? "mapped" : "unmapped";
+        const patientBadgeText = patientMapped
+          ? "Patient + device mapped"
+          : d.patient_id
+            ? "Patient mapped, waiting device"
+            : "No patient mapped";
+        const lookupDeviceId = d.lookup_device_id || d.device_id || "--";
+        const mappedDeviceId = d.mapped_device_id || "--";
+        const lastSentText = d.last_sent
+          ? `${d.last_sent} ${timeAgo(d.last_sent)}`
+          : "--";
+
+        return `
+    <div class="card">
+      <div class="row">
+        <div><strong>${d.device_id}</strong></div>
+        <div class="badge ${statusClass}">${statusText}</div>
+      </div>
+      <div class="patient-badge ${patientBadgeClass}">${patientBadgeText}</div>
+      <div class="meta">
+        <span class="label">Patient ID</span><span>${d.patient_id || "Not Assigned"}</span>
+        <span class="label">Lookup Device ID</span><span>${lookupDeviceId}</span>
+        <span class="label">Mapped Device ID</span><span>${mappedDeviceId}</span>
+        <span class="label">Case</span><span>${caseName}</span>
+        <span class="label">Profile</span><span>${profile}</span>
+        <span class="label">Phase</span><span>${phase}</span>
+        <span class="label">Last Sent</span><span>${lastSentText}</span>
+        <span class="label">API Status</span><span class="api-status-text ${status.cls}">${status.text}</span>
+      </div>
+
+      <div class="section-title">Hemodynamic Monitor</div>
+      <div class="meta">
+        <span class="label">MAP</span><span>${map} mmHg</span>
+        <span class="label">Pulse Rate</span><span>${hr} bpm</span>
+        <span class="label">Blood Pressure</span><span>${sbp}/${dbp} mmHg</span>
+        <span class="label">EtCO2</span><span>${etco2} mmHg</span>
+      </div>
+
+      <div class="section-title">HLM/ECMO</div>
+      <div class="meta">
+        <span class="label">Arterial Flow</span><span>${arterialFlow} L/min</span>
+        <span class="label">Sweep</span><span>${sweep} L/min</span>
+        <span class="label">FiO2</span><span>${fio2} %</span>
+      </div>
+
+      <div class="section-title">Oximeter</div>
+      <div class="meta">
+        <span class="label">Cerebral oxygen saturation</span><span>${rso2} %</span>
+      </div>
+
+      <div class="section-title">Lab Measurements</div>
+      <div class="meta">
+        <span class="label">ACT</span><span>${act} sec</span>
+        <span class="label">Lactate</span><span>${lactate} mmol/L</span>
+        <span class="label">Glucose</span><span>${glucose} mg/dL</span>
+      </div>
+
+      <div class="actions">
+        <select id="case_${d.device_id}">
+          <option value="within_range" ${caseName === "within_range" ? "selected" : ""}>normal (within range)</option>
+          <option value="outside_range" ${caseName === "outside_range" ? "selected" : ""}>outside operating range</option>
+          <option value="low_limit" ${caseName === "low_limit" ? "selected" : ""}>low limit</option>
+          <option value="high_limit" ${caseName === "high_limit" ? "selected" : ""}>high limit</option>
+          <option value="mixed" ${caseName === "mixed" ? "selected" : ""}>mix</option>
+        </select>
+        <button onclick="checkPatient('${d.device_id}')">Check Patient</button>
+        ${
+          !d.active
+            ? `<button class="primary" onclick="startEMR('${d.device_id}')">Start</button>`
+            : `<button class="danger" onclick="stopEMR('${d.device_id}')">Stop</button>`
+        }
+      </div>
+    </div>
+  `;
+      }
+
+      function startEMR(deviceId) {
+        const caseName =
+          document.getElementById(`case_${deviceId}`)?.value || "within_range";
+        apiPost(`${API}/api/emr/${deviceId}/start`, { case: caseName });
+      }
+
+      function checkPatient(deviceId) {
+        apiPost(`${API}/api/emr/${deviceId}/check-patient`, {});
+      }
+
+      function stopEMR(deviceId) {
+        apiPost(`${API}/api/emr/${deviceId}/stop`, {});
+      }
+
+      function stopAllEMR() {
+        apiPost(`${API}/api/emr/stop-all`, {});
+      }
+
+      function clearRuntimeData() {
+        const ok = confirm(
+          "Clear runtime EMR data shown in UI for all devices?",
+        );
+        if (!ok) return;
+        apiPost(`${API}/api/emr/clear-data`, {});
+      }
+
+      function shutdownSimulator() {
+        const ok = confirm(
+          "This will stop the full simulator process (CDI + EMR). Continue?",
+        );
+        if (!ok) return;
+        apiPost(`${API}/api/emr/shutdown`, {});
+      }
+
+      async function refresh() {
+        try {
+          const r = await fetch(`${API}/api/emr/devices`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+
+          const dataStr = JSON.stringify(data);
+          if (lastData === dataStr) {
+            return;
+          }
+          lastData = dataStr;
+
+          if (data.enabled === false) {
+            document.getElementById("kpis").innerHTML = "";
+            document.getElementById("deviceGrid").innerHTML = `
+        <div class="card">
+          <strong>EMR simulator is not enabled.</strong><br />
+          Start backend with --enable-emr and --enable-emr-ui.
+        </div>
+      `;
+          } else {
+            renderKPIs(data);
+            document.getElementById("deviceGrid").innerHTML = (
+              data.devices || []
+            )
+              .map(renderDevice)
+              .join("");
+          }
+
+          document.getElementById("lastUpdate").textContent =
+            new Date().toLocaleTimeString();
+        } catch (e) {
+          console.error("[EMR UI] Refresh failed:", e);
+        }
+      }
+
+      setTimeout(() => {
+        refresh();
+        setInterval(refresh, 5000);
+      }, 800);
+    </script>
+  </body>
+</html>
