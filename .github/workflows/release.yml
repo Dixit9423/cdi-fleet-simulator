@@ -3,15 +3,15 @@ name: Publish Release
 on:
   push:
     branches:
-      - main
+      - "*"
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch, tag, or SHA to build (example: main)'
+        description: "Branch, tag, or SHA to build (example: main)"
         required: true
-        default: 'main'
+        default: "main"
 
 permissions:
   contents: write
@@ -30,7 +30,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         shell: pwsh
@@ -56,7 +56,13 @@ jobs:
           New-Item -ItemType Directory -Path $packageDir | Out-Null
           Copy-Item "dist\fleet_simulator\*" $packageDir -Recurse -Force
           Copy-Item "devices_config.yaml" $packageDir -Force
+          if (Test-Path "simulator\config\emr_config.yaml") {
+            New-Item -ItemType Directory -Path "$packageDir\simulator\config" -Force | Out-Null
+            Copy-Item "simulator\config\emr_config.yaml" "$packageDir\simulator\config" -Force
+          }
           Copy-Item "README.md" $packageDir -Force
+          if (Test-Path "simulator\README.md") { Copy-Item "simulator\README.md" $packageDir -Force }
+          if (Test-Path "IMPLEMENTATION_STATUS.md") { Copy-Item "IMPLEMENTATION_STATUS.md" $packageDir -Force }
           Copy-Item "FLEET_SIMULATOR_SUMMARY.md" $packageDir -Force
           if (Test-Path "FLEET_IMPROVEMENTS_v2.md") { Copy-Item "FLEET_IMPROVEMENTS_v2.md" $packageDir -Force }
           $notesFile = "RELEASE_NOTES_$version.md"
