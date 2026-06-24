@@ -1,6 +1,6 @@
 # CDI + EMR Simulator Implementation Status
 
-Date: 2026-06-22
+Date: 2026-06-24
 
 ## 1) Objective
 
@@ -10,6 +10,60 @@ Track the current simulator-side implementation for dual-mode support:
 - EMR REST simulator (new modular extension)
 
 This document reflects only features currently present in the repository.
+
+## 1.1 Update Log (2026-06-24, Sequence)
+
+The following updates were implemented today, in chronological order:
+
+1. Generator case behavior adjustment
+
+- `low_limit` and `high_limit` generation behavior was updated to exceed configured limits (out-of-range behavior), instead of remaining within range.
+
+2. EMR control UI hardening and operator UX updates
+
+- Added output escaping for dynamic UI rendering.
+- Added keyboard focus-visible styles and improved interaction clarity.
+- Added responsive layout refinements for smaller screens.
+- Added refresh warning/error banner so stale-data situations are visible to operators.
+
+3. EMR observability/logging enhancement
+
+- Added structured info/warning logs for EMR control API actions (`start`, `stop`, `check-patient`, `stop-all`, `clear-data`, `shutdown`).
+- Added runner lifecycle and mapping/send logs for easier terminal debugging.
+
+4. EMR simulator device expansion
+
+- Expanded simulator EMR device count from 2 to 5 in `simulator/config/emr_config.yaml`.
+
+5. Dry-run patient mapping fix
+
+- Fixed dry-run assignment behavior so device assignment no longer falls back to a shared default pid (`1`) for unmapped devices.
+- Added deterministic dry-run patient and device assignment caches so each device keeps a stable patient mapping.
+
+6. Strict patient uniqueness guard (active device conflict)
+
+- Added one-patient-to-one-active-device guard.
+- Start is blocked with conflict details if a patient is already active on another device.
+- Send path also blocks and surfaces conflict state if duplicate active mapping appears at runtime.
+
+7. Tick logging cadence update
+
+- EMR runner success logs now emit per successful tick (continuous tick sequence) instead of milestone-only logging every 30 ticks.
+
+8. EMR UI visual policy update (medical-style)
+
+- Removed translucent/glassmorphism-style status/warning emphasis and switched to flat, clinical status styling.
+
+9. Live mapping correctness fix (no false patient mapping)
+
+- When patient lookup succeeds but device assignment is not found, runtime `patient_id` is kept unset (`None`) for that device.
+- This prevents false UI/API impression that the device is mapped when assignment row does not exist.
+
+10. Combined waiting-state semantics and UI counters
+
+- Added explicit combined status `waiting_for_patient_and_device_assignment` for unresolved mapping states.
+- EMR UI API-status text now shows both pending conditions when applicable.
+- EMR KPI counters now include this combined state in both Waiting Patient and Waiting Mapping metrics.
 
 ## 2) Implemented (Code-Verified)
 
@@ -78,6 +132,7 @@ Current capabilities:
 - Retry/backoff and TLS verify toggle
 - Optional CA-bundle path for TLS verification via config (`verify` can be bool or cert path)
 - Dry-run mode support
+- Dry-run deterministic patient/device mapping support (stable mapping by identifier/device)
 - Detailed debug logging (when log level is debug): URL, status code, latency, device/pid context, short error/response snippet
 
 Behavior enforced:
@@ -88,6 +143,7 @@ Behavior enforced:
 - Device assignment lookup supports both:
   - assignment-by-device (latest row, no pid filter)
   - assignment-by-device+pid (filtered fallback path)
+- In dry-run mode, assignment lookup does not auto-map to shared fallback pid; mapping is created/resolved per device and patient identifier flow.
 
 ### 2.4 Generator, payload, and runtime service
 
@@ -104,10 +160,12 @@ Current runtime behavior:
 - One EMR worker thread per configured EMR device
 - Start/stop per device
 - Case-driven value generation (`within_range`, `outside_range`, `low_limit`, `high_limit`, `mixed`)
+- `low_limit` and `high_limit` cases drive values beyond configured limits for boundary-condition simulation.
 - Profile/phase-aware target selection
 - Assignment-first patient mapping:
   - First resolves latest assignment row by device id and uses assignment pid.
   - Falls back to configured `patient_identifier` lookup + assignment check when needed.
+  - If assignment is not found, runtime keeps `patient_id` unset (no false mapped patient state).
 - Stop lifecycle emits device disconnect status to EMR using `send_device_status()` before runtime mapping is cleared
 - If runtime `patient_id` is empty during stop, service performs fallback patient lookup using configured `patient_identifier`
 - Runtime status tracking per device:
@@ -120,6 +178,14 @@ Current runtime behavior:
   - `last_payload_status`
   - `last_sent`
   - `last_error`
+- Mapping wait states include:
+  - `waiting_for_patient`
+  - `waiting_for_device_assignment`
+  - `waiting_for_patient_and_device_assignment`
+- Active patient uniqueness guard:
+  - Start is rejected when the same patient is already active on another device.
+  - Send loop is blocked when runtime conflict is detected (`patient_conflict_active_device`).
+- Runner success logging includes continuous tick-level `send_ok` visibility (per successful send tick).
 
 Clear runtime support:
 
@@ -166,6 +232,10 @@ Implemented in `fleet_sim/emr_control_app.py`:
 - `POST /api/emr/clear-data`
 - `POST /api/emr/shutdown`
 
+Current start conflict behavior:
+
+- `POST /api/emr/{device_id}/start` returns HTTP 409 when patient uniqueness conflict is detected (patient already active on another device), with conflict device context.
+
 ### 2.7 UI status
 
 `fleet_sim/templates/control_panel.html` currently includes:
@@ -183,7 +253,13 @@ Implemented in `fleet_sim/emr_control_app.py`:
 - Check Patient, Start/Stop, Stop All, Clear Runtime Data, Shutdown actions
 - Mapped vs waiting status visibility and relative last-sent display
 - Waiting counters derived from `last_payload_status` (`waiting_for_patient`, `waiting_for_device_assignment`)
+- Waiting counters include combined unresolved state (`waiting_for_patient_and_device_assignment`) in both waiting KPIs.
+- API status text supports combined unresolved state: "Waiting for patient and device assignment".
 - API status shown as plain text (no oval badge), including full detailed error text when failures occur
+- Refresh failure/stale-data operator banner for visibility during API refresh errors
+- Escaped dynamic value rendering for safer UI output handling
+- Responsive and keyboard-focus improvements for operator usability
+- Flat, non-glassmorphism visual style for status/error emphasis (medical-style UI direction)
 
 ### 2.8 Dependencies and docs
 

@@ -137,18 +137,21 @@
         margin-bottom: 8px;
       }
       .badge {
+        display: inline-block;
         border-radius: 999px;
         padding: 2px 9px;
         font-size: 0.7rem;
         font-weight: 700;
+        border: 1px solid var(--border);
+        background: var(--card);
       }
       .badge.active {
-        background: rgba(34, 197, 94, 0.15);
         color: var(--green);
+        border-color: var(--green);
       }
       .badge.stopped {
-        background: rgba(234, 179, 8, 0.15);
         color: var(--yellow);
+        border-color: var(--yellow);
       }
       .patient-badge {
         display: inline-block;
@@ -157,15 +160,16 @@
         padding: 3px 10px;
         font-size: 0.72rem;
         font-weight: 700;
+        border: 1px solid var(--border);
+        background: var(--card);
       }
       .patient-badge.mapped {
-        background: rgba(34, 197, 94, 0.15);
         color: var(--green);
+        border-color: var(--green);
       }
       .patient-badge.unmapped {
-        background: rgba(239, 68, 68, 0.15);
         color: var(--red);
-        border: 1px solid rgba(239, 68, 68, 0.35);
+        border-color: var(--red);
       }
       .api-badge {
         display: inline-block;
@@ -173,22 +177,24 @@
         padding: 3px 10px;
         font-size: 0.72rem;
         font-weight: 700;
+        border: 1px solid var(--border);
+        background: var(--card);
       }
       .api-badge.ok {
         color: var(--green);
-        background: rgba(34, 197, 94, 0.15);
+        border-color: var(--green);
       }
       .api-badge.warn {
         color: var(--yellow);
-        background: rgba(234, 179, 8, 0.15);
+        border-color: var(--yellow);
       }
       .api-badge.err {
         color: var(--red);
-        background: rgba(239, 68, 68, 0.15);
+        border-color: var(--red);
       }
       .api-badge.info {
         color: var(--accent);
-        background: rgba(6, 182, 212, 0.15);
+        border-color: var(--accent);
       }
       .api-status-text.ok {
         color: var(--green);
@@ -235,6 +241,20 @@
         border-radius: 6px;
         padding: 6px 10px;
         font-size: 0.8rem;
+        min-height: 34px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover,
+      select:hover {
+        border-color: var(--accent);
+      }
+      button:focus-visible,
+      select:focus-visible,
+      .help-box summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
       }
       button.primary {
         background: var(--accent);
@@ -254,6 +274,62 @@
         color: #fff;
         padding: 10px 14px;
         border-radius: 8px;
+      }
+      .refresh-status {
+        display: none;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        font-size: 0.82rem;
+      }
+      .refresh-status.warn {
+        display: block;
+        color: var(--yellow);
+        border-color: var(--yellow);
+        background: var(--card);
+      }
+      .refresh-status.err {
+        display: block;
+        color: var(--red);
+        border-color: var(--red);
+        background: var(--card);
+      }
+
+      @media (max-width: 900px) {
+        body {
+          padding: 14px;
+        }
+        header {
+          align-items: flex-start;
+          gap: 8px;
+          flex-direction: column;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .help-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .toolbar {
+          flex-direction: column;
+        }
+        .toolbar button {
+          width: 100%;
+        }
+        .meta {
+          grid-template-columns: 1fr;
+        }
+        .actions {
+          flex-direction: column;
+        }
+        .actions button,
+        .actions select {
+          width: 100%;
+        }
       }
     </style>
   </head>
@@ -310,12 +386,40 @@
         Stop Simulator Process
       </button>
     </div>
+    <div
+      id="refreshStatus"
+      class="refresh-status"
+      role="status"
+      aria-live="polite"
+    ></div>
     <div class="grid" id="deviceGrid"></div>
     <div id="toast"></div>
 
     <script>
       const API = "";
       let lastData = null;
+      let refreshErrorCount = 0;
+
+      function h(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function refreshStatus(type, message) {
+        const el = document.getElementById("refreshStatus");
+        if (!el) return;
+        if (!message) {
+          el.className = "refresh-status";
+          el.textContent = "";
+          return;
+        }
+        el.className = `refresh-status ${type}`;
+        el.textContent = message;
+      }
 
       function toast(msg) {
         const t = document.getElementById("toast");
@@ -345,6 +449,12 @@
 
       function statusView(rawStatus) {
         const status = String(rawStatus || "idle");
+        if (status === "waiting_for_patient_and_device_assignment") {
+          return {
+            text: "Waiting for patient and device assignment",
+            cls: "warn",
+          };
+        }
         if (status === "waiting_for_patient") {
           return { text: "Waiting for patient", cls: "warn" };
         }
@@ -400,11 +510,16 @@
         const devices = data.devices || [];
         const active = devices.filter((d) => d.active).length;
         const waitingPatient = devices.filter(
-          (d) => (d.last_payload_status || "") === "waiting_for_patient",
+          (d) =>
+            (d.last_payload_status || "") === "waiting_for_patient" ||
+            (d.last_payload_status || "") ===
+              "waiting_for_patient_and_device_assignment",
         ).length;
         const waitingMap = devices.filter(
           (d) =>
-            (d.last_payload_status || "") === "waiting_for_device_assignment",
+            (d.last_payload_status || "") === "waiting_for_device_assignment" ||
+            (d.last_payload_status || "") ===
+              "waiting_for_patient_and_device_assignment",
         ).length;
         const mapped = devices.filter(
           (d) => !!d.patient_id && !!d.mapped_device_id,
@@ -451,23 +566,33 @@
         const lastSentText = d.last_sent
           ? `${d.last_sent} ${timeAgo(d.last_sent)}`
           : "--";
+        const safeDeviceId = h(d.device_id);
+        const safePatientId = h(d.patient_id || "Not Assigned");
+        const safeLookupDeviceId = h(lookupDeviceId);
+        const safeMappedDeviceId = h(mappedDeviceId);
+        const safeCaseName = h(caseName);
+        const safeProfile = h(profile);
+        const safePhase = h(phase);
+        const safeStatusText = h(status.text);
+        const safePatientBadgeText = h(patientBadgeText);
+        const safeLastSentText = h(lastSentText);
 
         return `
     <div class="card">
       <div class="row">
-        <div><strong>${d.device_id}</strong></div>
+        <div><strong>${safeDeviceId}</strong></div>
         <div class="badge ${statusClass}">${statusText}</div>
       </div>
-      <div class="patient-badge ${patientBadgeClass}">${patientBadgeText}</div>
+      <div class="patient-badge ${patientBadgeClass}">${safePatientBadgeText}</div>
       <div class="meta">
-        <span class="label">Patient ID</span><span>${d.patient_id || "Not Assigned"}</span>
-        <span class="label">Lookup Device ID</span><span>${lookupDeviceId}</span>
-        <span class="label">Mapped Device ID</span><span>${mappedDeviceId}</span>
-        <span class="label">Case</span><span>${caseName}</span>
-        <span class="label">Profile</span><span>${profile}</span>
-        <span class="label">Phase</span><span>${phase}</span>
-        <span class="label">Last Sent</span><span>${lastSentText}</span>
-        <span class="label">API Status</span><span class="api-status-text ${status.cls}">${status.text}</span>
+        <span class="label">Patient ID</span><span>${safePatientId}</span>
+        <span class="label">Lookup Device ID</span><span>${safeLookupDeviceId}</span>
+        <span class="label">Mapped Device ID</span><span>${safeMappedDeviceId}</span>
+        <span class="label">Case</span><span>${safeCaseName}</span>
+        <span class="label">Profile</span><span>${safeProfile}</span>
+        <span class="label">Phase</span><span>${safePhase}</span>
+        <span class="label">Last Sent</span><span>${safeLastSentText}</span>
+        <span class="label">API Status</span><span class="api-status-text ${status.cls}">${safeStatusText}</span>
       </div>
 
       <div class="section-title">Hemodynamic Monitor</div>
@@ -498,36 +623,59 @@
       </div>
 
       <div class="actions">
-        <select id="case_${d.device_id}">
+        <select data-role="case-select">
           <option value="within_range" ${caseName === "within_range" ? "selected" : ""}>normal (within range)</option>
           <option value="outside_range" ${caseName === "outside_range" ? "selected" : ""}>outside operating range</option>
           <option value="low_limit" ${caseName === "low_limit" ? "selected" : ""}>low limit</option>
           <option value="high_limit" ${caseName === "high_limit" ? "selected" : ""}>high limit</option>
           <option value="mixed" ${caseName === "mixed" ? "selected" : ""}>mix</option>
         </select>
-        <button onclick="checkPatient('${d.device_id}')">Check Patient</button>
+        <button onclick="checkPatient(this)" data-device-id="${safeDeviceId}">Check Patient</button>
         ${
           !d.active
-            ? `<button class="primary" onclick="startEMR('${d.device_id}')">Start</button>`
-            : `<button class="danger" onclick="stopEMR('${d.device_id}')">Stop</button>`
+            ? `<button class="primary" onclick="startEMR(this)" data-device-id="${safeDeviceId}">Start</button>`
+            : `<button class="danger" onclick="stopEMR(this)" data-device-id="${safeDeviceId}">Stop</button>`
         }
       </div>
     </div>
   `;
       }
 
-      function startEMR(deviceId) {
+      function startEMR(buttonEl) {
+        const deviceId = buttonEl?.dataset?.deviceId;
+        if (!deviceId) {
+          toast("Error: missing device id");
+          return;
+        }
         const caseName =
-          document.getElementById(`case_${deviceId}`)?.value || "within_range";
-        apiPost(`${API}/api/emr/${deviceId}/start`, { case: caseName });
+          buttonEl
+            .closest(".actions")
+            ?.querySelector('select[data-role="case-select"]')?.value ||
+          "within_range";
+        apiPost(`${API}/api/emr/${encodeURIComponent(deviceId)}/start`, {
+          case: caseName,
+        });
       }
 
-      function checkPatient(deviceId) {
-        apiPost(`${API}/api/emr/${deviceId}/check-patient`, {});
+      function checkPatient(buttonEl) {
+        const deviceId = buttonEl?.dataset?.deviceId;
+        if (!deviceId) {
+          toast("Error: missing device id");
+          return;
+        }
+        apiPost(
+          `${API}/api/emr/${encodeURIComponent(deviceId)}/check-patient`,
+          {},
+        );
       }
 
-      function stopEMR(deviceId) {
-        apiPost(`${API}/api/emr/${deviceId}/stop`, {});
+      function stopEMR(buttonEl) {
+        const deviceId = buttonEl?.dataset?.deviceId;
+        if (!deviceId) {
+          toast("Error: missing device id");
+          return;
+        }
+        apiPost(`${API}/api/emr/${encodeURIComponent(deviceId)}/stop`, {});
       }
 
       function stopAllEMR() {
@@ -555,9 +703,13 @@
           const r = await fetch(`${API}/api/emr/devices`);
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const data = await r.json();
+          refreshErrorCount = 0;
+          refreshStatus("", "");
 
           const dataStr = JSON.stringify(data);
           if (lastData === dataStr) {
+            document.getElementById("lastUpdate").textContent =
+              new Date().toLocaleTimeString();
             return;
           }
           lastData = dataStr;
@@ -582,6 +734,13 @@
           document.getElementById("lastUpdate").textContent =
             new Date().toLocaleTimeString();
         } catch (e) {
+          refreshErrorCount += 1;
+          const warnOrErr = refreshErrorCount >= 3 ? "err" : "warn";
+          const msg = `Live refresh failed (${refreshErrorCount}). Showing last known data. ${e.message}`;
+          refreshStatus(warnOrErr, msg);
+          if (refreshErrorCount === 1) {
+            toast(`Refresh error: ${e.message}`);
+          }
           console.error("[EMR UI] Refresh failed:", e);
         }
       }

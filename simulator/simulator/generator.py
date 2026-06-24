@@ -67,15 +67,17 @@ def update_parameter(
         target_value = (base_min - (0.12 * span)) if direction < 0 else (base_max + (0.12 * span))
         max_step = max(0.6, span * 0.08 * volatility)
     elif variant == "low_limit":
-        allowed_min = base_min
+        margin = span * 0.2
+        allowed_min = base_min - margin
         allowed_max = base_max
-        target_value = base_min + (0.05 * span)
-        max_step = max(0.2, span * 0.02 * volatility)
+        target_value = base_min - (0.08 * span)
+        max_step = max(0.25, span * 0.03 * volatility)
     elif variant == "high_limit":
+        margin = span * 0.2
         allowed_min = base_min
-        allowed_max = base_max
-        target_value = base_max - (0.05 * span)
-        max_step = max(0.2, span * 0.02 * volatility)
+        allowed_max = base_max + margin
+        target_value = base_max + (0.08 * span)
+        max_step = max(0.25, span * 0.03 * volatility)
     else:
         allowed_min = base_min
         allowed_max = base_max

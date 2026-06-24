@@ -1,4 +1,4 @@
-api_base_url: "http://172.20.10.2:8081/apis/default"
+api_base_url: "http://192.168.29.116:8081/apis/default"
 
 parameters:
   map:
@@ -250,7 +250,7 @@ devices:
   - device_id: "Hemo-C1234567"
     mode: "emr"
     emr_lookup_device_id: "Hemo-C1234567"
-    device_type: "Terumo"
+    device_type: "hemodynamic"
     patient_identifier: "1"
     notes: "Patient stable"
     enabled: true
@@ -269,10 +269,43 @@ devices:
     send_interval: 1
     case: "mixed"
     profile: "hemo_cerebral_watch"
+  - device_id: "Hemo-C1234569"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234569"
+    device_type: "Terumo"
+    patient_identifier: "3"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "within_range"
+    profile: "hemo_perfusion_balance"
+  - device_id: "Hemo-C1234570"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234570"
+    device_type: "Terumo"
+    patient_identifier: "4"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "low_limit"
+    profile: "hemo_oxygen_delivery"
+  - device_id: "Hemo-C1234571"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234571"
+    device_type: "Terumo"
+    patient_identifier: "5"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "high_limit"
+    profile: "hemo_monitor_baseline"
 
 oauth:
   # Do not commit real secrets. Fill values locally or through secret management.
-  token_url: "http://172.20.10.2:8081/oauth2/default/token"
+  token_url: "http://192.168.29.116:8081/oauth2/default/token"
   grant_type: "password"
   client_id: "kzIFWrPgYrkHMGCdrM0Citf3KJx0nIZrd4ziOTITZ3U"
   client_secret: "iaFnZnTXYqlPkZfBQ_0n5hFWimIYSzxaPdWhCJZbY-w2kZXEKqwVcy85SDuE2b6YuYM3EYVEo4EN0SX0YD52Dg"

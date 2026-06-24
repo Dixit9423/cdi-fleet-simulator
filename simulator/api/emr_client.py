@@ -36,6 +36,8 @@ class EMRClient:
         self.log = logging.getLogger("simulator.emr_client")
         self._dummy_counter = itertools.count(1000)
         self._token_expires_at: float = 0.0
+        self._dry_patients_by_identifier: dict[str, str] = {}
+        self._dry_assignments_by_device: dict[str, str] = {}
 
     @staticmethod
     def _latency_ms(start_ts: float) -> int:
@@ -122,9 +124,17 @@ class EMRClient:
 
     def get_patient(self, identifier: str) -> dict[str, Any] | None:
         if self.dry_run:
-            idx = next(self._dummy_counter)
+            key = str(identifier).strip()
+            if key in self._dry_patients_by_identifier:
+                pid = self._dry_patients_by_identifier[key]
+            elif key.isdigit():
+                pid = key
+                self._dry_patients_by_identifier[key] = pid
+            else:
+                pid = str(next(self._dummy_counter))
+                self._dry_patients_by_identifier[key] = pid
             return {
-                "patient_id": str(idx),
+                "patient_id": pid,
                 "encounter_id": None,
             }
 
@@ -206,9 +216,23 @@ class EMRClient:
 
     def get_device_assignment(self, lookup_device_id: str, patient_id: str | None = None) -> dict[str, Any] | None:
         if self.dry_run:
+            key = str(lookup_device_id)
+            existing_pid = self._dry_assignments_by_device.get(key)
+
+            if patient_id is None:
+                if existing_pid is None:
+                    return None
+                return {
+                    "patient_id": existing_pid,
+                    "device_id": key,
+                    "encounter_id": None,
+                }
+
+            resolved_pid = str(patient_id)
+            self._dry_assignments_by_device[key] = resolved_pid
             return {
-                "patient_id": str(patient_id) if patient_id is not None else "1",
-                "device_id": str(lookup_device_id),
+                "patient_id": resolved_pid,
+                "device_id": key,
                 "encounter_id": None,
             }
 

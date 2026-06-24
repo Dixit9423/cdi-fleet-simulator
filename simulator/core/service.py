@@ -142,6 +142,7 @@ class EMRSimulatorService:
                     status_lock=l,
                     status=st,
                     stop_event=ev,
+                    find_conflict_device=self.find_active_conflict_device,
                 )
 
             targets.append((device_id, _target))
@@ -209,14 +210,48 @@ class EMRSimulatorService:
             )
         return {"devices": devices}
 
-    def start_device(self, device_id: str) -> bool:
+    def find_active_conflict_device(self, device_id: str, patient_id: str) -> str | None:
+        """Return active device id using the same patient, excluding device_id."""
+        target_pid = str(patient_id)
+        for other_id in self._devices.keys():
+            if other_id == device_id:
+                continue
+            lock = self._status_locks.get(other_id)
+            if not lock:
+                continue
+            with lock:
+                other = self._status[other_id]
+                if other.get("active") and str(other.get("patient_id") or "") == target_pid:
+                    return other_id
+        return None
+
+    def start_device_with_reason(self, device_id: str) -> tuple[bool, str]:
         if device_id not in self._devices:
-            return False
+            return False, "device_not_found"
+
+        with self._status_locks[device_id]:
+            patient_id = self._status[device_id].get("patient_id")
+
+        if patient_id:
+            conflict_id = self.find_active_conflict_device(device_id, str(patient_id))
+            if conflict_id:
+                with self._status_locks[device_id]:
+                    self._status[device_id]["active"] = False
+                    self._status[device_id]["last_payload_status"] = "patient_conflict_active_device"
+                    self._status[device_id]["last_error"] = (
+                        f"patient {patient_id} already active on device {conflict_id}"
+                    )
+                return False, f"patient_conflict:{conflict_id}"
+
         with self._status_locks[device_id]:
             self._status[device_id]["active"] = True
             self._status[device_id]["last_payload_status"] = "running"
             self._status[device_id]["last_error"] = None
-        return True
+        return True, "ok"
+
+    def start_device(self, device_id: str) -> bool:
+        ok, _ = self.start_device_with_reason(device_id)
+        return ok
 
     def sync_patient(self, device_id: str) -> tuple[bool, str | None]:
         """Fetch patient id and mapped device id, then cache in runtime status."""
@@ -267,11 +302,12 @@ class EMRSimulatorService:
                 self._status[device_id]["last_payload_status"] = "patient_and_device_mapped"
                 return True, patient_id
 
-            self._status[device_id]["patient_id"] = patient_id
+            # Keep patient_id empty until assignment exists for this specific device.
+            self._status[device_id]["patient_id"] = None
             self._status[device_id]["encounter_id"] = None
             self._status[device_id]["mapped_device_id"] = None
-            self._status[device_id]["last_payload_status"] = "waiting_for_device_assignment"
-            return False, patient_id
+            self._status[device_id]["last_payload_status"] = "waiting_for_patient_and_device_assignment"
+            return False, None
 
     def stop_device(self, device_id: str) -> bool:
         if device_id not in self._devices:
