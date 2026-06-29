@@ -95,14 +95,14 @@ jobs:
             Copy-Item "dist\hemodynamic_simulator\*" "$packageDir\hemodynamic_simulator" -Recurse -Force
           }
           Copy-Item "devices_config.yaml" $packageDir -Force
-          New-Item -ItemType Directory -Path "$packageDir\simulator\config" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$packageDir\hemodynamic_simulator\simulator\config" -Force | Out-Null
 
           # Ship only the single emr_config.yaml (use documented template if available to avoid secrets).
           if (Test-Path "simulator\config\emr_config.yaml.documented") {
-            Copy-Item "simulator\config\emr_config.yaml.documented" "$packageDir\simulator\config\emr_config.yaml" -Force
+            Copy-Item "simulator\config\emr_config.yaml.documented" "$packageDir\hemodynamic_simulator\simulator\config\emr_config.yaml" -Force
           }
           elseif (Test-Path "simulator\config\emr_config.yaml") {
-            Copy-Item "simulator\config\emr_config.yaml" "$packageDir\simulator\config\emr_config.yaml" -Force
+            Copy-Item "simulator\config\emr_config.yaml" "$packageDir\hemodynamic_simulator\simulator\config\emr_config.yaml" -Force
           }
           if (Test-Path ".env.example") { Copy-Item ".env.example" "$packageDir\.env" -Force }
           Copy-Item "README.md" $packageDir -Force

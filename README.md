@@ -15,7 +15,8 @@ Edit: `devices_config.yaml`
 Edit: `simulator/config/emr_config.yaml`
 
 - Recommended: Use the documented version `emr_config.yaml.documented`
-- Set OAuth credentials via environment variables (see `.env.example`)
+- Set OAuth credentials in `simulator/config/emr_config.yaml` (current runtime behavior)
+- `.env` is a template for operators; values are not auto-resolved into YAML today
 - Adjust profiles and device parameters
 
 ---
@@ -80,11 +81,11 @@ devices:
 - Modify simulation profiles
 - Add new phases to profiles
 
-**NEVER edit directly:**
+**Security note (current runtime behavior):**
 
-- OAuth credentials (use `.env` instead)
-- Actual usernames/passwords
-- Client secrets
+- OAuth credentials are currently read from `emr_config.yaml`.
+- Keep real secrets only in local/private copies of this file.
+- Never commit real usernames/passwords/client secrets to Git.
 
 **Example: Change API Endpoint**
 
@@ -109,42 +110,36 @@ parameters:
 
 ## OAuth Credentials Management
 
-### Solution 1: Use Environment Variables
+Current behavior: OAuth credentials are read from `simulator/config/emr_config.yaml`.
+The simulator does not automatically resolve `${ENV_VAR:default}` placeholders from `.env` yet.
 
-**Step 1:** Copy `.env.example` to `.env`
+### Recommended (current): Configure OAuth in emr_config.yaml
 
-```bash
-cp .env.example .env
+Set these fields under `oauth:` in `simulator/config/emr_config.yaml`:
+
+```yaml
+oauth:
+  token_url: "http://your-emr-host/oauth2/default/token"
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+  username: "your-username"
+  password: "your-password"
+  user_role: "users"
+  scope: "api:oemr ..."
 ```
 
-**Step 2:** Edit `.env` with actual values
+### Optional: Use a bearer token instead of OAuth password flow
 
-```bash
-EMR_OAUTH_CLIENT_ID="your-real-id"
-EMR_OAUTH_CLIENT_SECRET="your-real-secret"
-EMR_OAUTH_USERNAME="admin"
-EMR_OAUTH_PASSWORD="your-real-password"
-```
-
-**Step 3:** Load before running simulator
+If you already have a valid access token, pass it at runtime:
 
 ```powershell
-# PowerShell — load .env and run
-Get-Content .env | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { [System.Environment]::SetEnvironmentVariable($Matches[1].Trim(), $Matches[2].Trim('"')) } }
-.\hemodynamic_simulator.exe
+.\hemodynamic_simulator\hemodynamic_simulator.exe --emr-access-token <token>
 ```
 
-```bash
-# Bash/Zsh
-export $(cat .env | xargs)
-./hemodynamic_simulator.exe
-```
+### Why `.env` is still included
 
-**Step 4:** Verify `.gitignore` includes `.env`
-
-```bash
-echo ".env" >> .gitignore
-```
+`.env` in the release package is optional and provided as an operator template.
+It is not the active OAuth source unless env loading is implemented in code.
 
 ### Solution 2: Use Docker Secrets
 
@@ -317,7 +312,7 @@ devices:
 ### Issue: "OAuth authentication failed"
 
 **Cause:** Missing or wrong credentials  
-**Solution:** Set environment variables from `.env.example`
+**Solution:** Update `oauth` values in `simulator/config/emr_config.yaml` (or pass `--emr-access-token`)
 
 ### Issue: "Device profile not found"
 
@@ -336,7 +331,7 @@ devices:
 ### ✅ DO:
 
 - Edit config files for testing scenarios
-- Use environment variables for secrets
+- Keep OAuth secrets in local/private config only
 - Add comments explaining custom parameters
 - Version control configurations (without secrets)
 - Test after major config changes
@@ -366,7 +361,7 @@ CDICore-Simulator-Suite-<version>-Windows/
 │   ├── hemodynamic_simulator.exe      ← Run this
 │   └── ...
 ├── devices_config.yaml                ← CDI gRPC config (edit before running)
-├── .env                               ← Environment variables template (fill in secrets)
+├── .env                               ← Optional template file (not active OAuth source today)
 ├── README.md
 └── simulator/
     └── config/
@@ -403,23 +398,27 @@ CDICore-Simulator-Suite-<version>-Windows/
 
 ## Next Steps
 
-1. **Setup Secrets:** Create `.env` file
+1. **Optional:** Create `.env` file (template only)
 
    ```bash
    cp .env.example .env
-   # Edit .env with real credentials
    ```
 
-   Ensure `.env` is in `.gitignore` so credentials are never committed.
+# Optional reference template for operators
+
+```
+
+Ensure `.env` is in `.gitignore` so credentials are never committed.
 
 2. **Configure EMR:** Edit `simulator/config/emr_config.yaml` directly
-   - Set `api_base_url` to your EMR endpoint
-   - Adjust device list, profiles, and parameter ranges
-   - Do **not** put OAuth secrets here — use `.env` or environment variables instead
+- Set `api_base_url` to your EMR endpoint
+- Adjust device list, profiles, and parameter ranges
+- Set OAuth values in `oauth:` for current runtime behavior
 
-   > **Note:** `emr_config.yaml.documented` is a fully commented reference template
-   > used by the CI release pipeline. It is not a replacement for the runtime config.
+> **Note:** `emr_config.yaml.documented` is a fully commented reference template
+> used by the CI release pipeline. It is not a replacement for the runtime config.
 
 3. **Store credentials securely**
-   - Use environment variables or a secrets vault
-   - Never commit secrets to Git
+- Use environment variables or a secrets vault
+- Never commit secrets to Git
+```

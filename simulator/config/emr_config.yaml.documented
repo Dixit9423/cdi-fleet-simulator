@@ -307,18 +307,20 @@ profiles:
 # OAUTH CONFIGURATION  —  ⚠️  SECURITY SENSITIVE
 # ═══════════════════════════════════════════════════════════════════════════════
 # OAuth2 credentials for EMR API authentication.
+# Note: `${ENV_VAR:default}` placeholder syntax is documentation-only here.
+# The current runtime reads literal YAML values and does not auto-resolve env placeholders.
 
 oauth:
   # OAuth2 token endpoint
-  token_url: "${EMR_OAUTH_TOKEN_URL:http://192.168.29.116:8081/oauth2/default/token}"
+  token_url: "http://your-emr-host:port/oauth2/default/token"
   # Grant type (typically password for service-to-service)
   grant_type: "password"
-  # OAuth2 client credentials (use env vars: EMR_OAUTH_CLIENT_ID, EMR_OAUTH_CLIENT_SECRET)
-  client_id: "${EMR_OAUTH_CLIENT_ID:}"
-  client_secret: "${EMR_OAUTH_CLIENT_SECRET:}"
-  # Service account credentials (use env vars: EMR_OAUTH_USERNAME, EMR_OAUTH_PASSWORD)
-  username: "${EMR_OAUTH_USERNAME:}"
-  password: "${EMR_OAUTH_PASSWORD:}"
+  # OAuth2 client credentials (fill locally; never commit real secrets)
+  client_id: ""
+  client_secret: ""
+  # Service account credentials (fill locally; never commit real secrets)
+  username: ""
+  password: ""
   # OAuth scope (permissions requested from EMR)
   user_role: "users"
   scope: "api:oemr user/Patient.read user/Patient.write user/patient.read user/patient.write user/Encounter.rs user/encounter.crus"
