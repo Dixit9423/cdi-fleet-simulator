@@ -46,12 +46,14 @@ jobs:
       - name: Build hemodynamic simulator executable
         shell: pwsh
         run: |
-          pyinstaller --clean --noconfirm `
-            --name hemodynamic_simulator `
-            --onedir `
-            --paths . `
-            --add-data "fleet_sim/templates/emr_control_panel.html;fleet_sim/templates" `
-            run_emr_service.py
+          $entryScript = "run_emr_service.py"
+          if (-not (Test-Path $entryScript)) {
+            $entryScript = "simulator/main.py"
+          }
+          if (-not (Test-Path $entryScript)) {
+            throw "Hemodynamic entry script not found. Expected run_emr_service.py or simulator/main.py"
+          }
+          pyinstaller --clean --noconfirm --name hemodynamic_simulator --onedir --paths . --add-data "fleet_sim/templates/emr_control_panel.html;fleet_sim/templates" $entryScript
 
       - name: Create release package
         id: package
