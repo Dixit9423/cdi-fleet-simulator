@@ -477,7 +477,7 @@
           };
         }
         if (status === "dry_run_ok") {
-          return { text: "Dry-run POST ok", cls: "ok" };
+          return { text: "POST ok", cls: "ok" };
         }
         if (status === "stopped") {
           return { text: "Stopped", cls: "info" };
@@ -531,7 +531,6 @@
     <div class="kpi"><div class="v">${waitingPatient}</div><div class="l">Waiting Patient</div></div>
     <div class="kpi"><div class="v">${waitingMap}</div><div class="l">Waiting Mapping</div></div>
     <div class="kpi"><div class="v">${mapped}</div><div class="l">Mapped</div></div>
-    <div class="kpi"><div class="v">${data.dry_run ? "ON" : "OFF"}</div><div class="l">Dry Run</div></div>
   `;
       }
 

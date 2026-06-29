@@ -32,11 +32,6 @@ def parse_args() -> argparse.Namespace:
         help="Disable TLS certificate verification (useful for self-signed lab certs)",
     )
     parser.add_argument(
-        "--live",
-        action="store_true",
-        help="Enable live OpenEMR API calls. Default is dry-run mode.",
-    )
-    parser.add_argument(
         "--no-ui",
         action="store_true",
         help="Run EMR simulator without EMR web UI.",
@@ -73,7 +68,7 @@ def main() -> int:
         api_base_url=args.emr_api_base_url,
         access_token=args.emr_access_token or None,
         verify_ssl=not args.emr_no_verify_ssl,
-        dry_run=not args.live,
+        dry_run=False,
     )
     emr_service.load()
     emr_service.start()
@@ -87,7 +82,7 @@ def main() -> int:
 
     print("[EMRService] Started")
     print(f"[EMRService] Devices: {emr_service.device_count}")
-    print(f"[EMRService] Dry-run mode: {emr_service.dry_run_mode}")
+    print("[EMRService] Live API mode: enabled")
     if not args.no_ui:
         print(f"[EMRService] UI: http://localhost:{args.ui_port}")
     print("[EMRService] Press Ctrl+C to stop")

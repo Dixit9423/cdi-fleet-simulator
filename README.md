@@ -6,6 +6,15 @@ It simulates multiple CDI Core devices, each with its own gRPC bidirectional `Te
 
 ---
 
+## Document index
+
+- Fleet simulator summary: `FLEET_SIMULATOR_SUMMARY.md`
+- Hemodynamic simulator summary: `HEMODYNAMIC_SIMULATOR_SUMMARY.md`
+- Fleet quickstart and flags: this `README.md`
+- Standalone EMR module details: `simulator/README.md`
+
+---
+
 ## Overview
 
 - Simulates 6 CDI Core devices by default
@@ -93,30 +102,30 @@ python run_fleet.py --no-persist
 
 ### Main flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--config`, `-c` | `devices_config.yaml` | YAML configuration path |
-| `--insecure` | `False` | Disable TLS and use insecure channel |
-| `--control-port` | `8090` | Control panel HTTP port |
-| `--no-control` | `False` | Disable control panel |
-| `--state-file` | `.fleet_runtime_state.json` | Runtime state file |
-| `--no-persist` | Source: OFF, EXE: ON | Disable runtime state persistence |
+| Flag             | Default                     | Description                          |
+| ---------------- | --------------------------- | ------------------------------------ |
+| `--config`, `-c` | `devices_config.yaml`       | YAML configuration path              |
+| `--insecure`     | `False`                     | Disable TLS and use insecure channel |
+| `--control-port` | `8090`                      | Control panel HTTP port              |
+| `--no-control`   | `False`                     | Disable control panel                |
+| `--state-file`   | `.fleet_runtime_state.json` | Runtime state file                   |
+| `--no-persist`   | Source: OFF, EXE: ON        | Disable runtime state persistence    |
 
 ---
 
 ## Control panel API
 
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/` | Web UI |
-| GET | `/api/fleet` | All devices |
-| GET | `/api/fleet/summary` | Fleet KPIs |
-| GET | `/api/profiles` | Profiles |
-| GET | `/api/devices/{id}` | Single device |
-| POST | `/api/devices/{id}/state` | Change state |
-| POST | `/api/devices/{id}/patient` | Bind/release patient |
-| POST | `/api/devices/{id}/profile` | Switch profile |
-| POST | `/api/devices/{id}/tick` | Update tick values |
+| Method | Endpoint                    | Purpose              |
+| ------ | --------------------------- | -------------------- |
+| GET    | `/`                         | Web UI               |
+| GET    | `/api/fleet`                | All devices          |
+| GET    | `/api/fleet/summary`        | Fleet KPIs           |
+| GET    | `/api/profiles`             | Profiles             |
+| GET    | `/api/devices/{id}`         | Single device        |
+| POST   | `/api/devices/{id}/state`   | Change state         |
+| POST   | `/api/devices/{id}/patient` | Bind/release patient |
+| POST   | `/api/devices/{id}/profile` | Switch profile       |
+| POST   | `/api/devices/{id}/tick`    | Update tick values   |
 
 ---
 
@@ -168,14 +177,14 @@ If connecting by IP address, ensure the server certificate SAN includes that IP,
 
 ## Troubleshooting
 
-| Issue | Action |
-|------|--------|
-| Proto stubs not found | Generate with `python -m grpc_tools.protoc ...` as shown by runtime error |
-| Cert file not found | Run `python generate_certs.py` or fix `cert_dir` in YAML |
-| Channel not ready | Confirm server is running; try `--insecure` for local tests |
-| `too_many_pings` GOAWAY | Keepalive is disabled by default; restart old clients |
-| Control panel port busy | Use `--control-port` |
-| `Import error: fleet_sim` | Run from `TelemetryGrpcClient/` directory |
+| Issue                     | Action                                                                    |
+| ------------------------- | ------------------------------------------------------------------------- |
+| Proto stubs not found     | Generate with `python -m grpc_tools.protoc ...` as shown by runtime error |
+| Cert file not found       | Run `python generate_certs.py` or fix `cert_dir` in YAML                  |
+| Channel not ready         | Confirm server is running; try `--insecure` for local tests               |
+| `too_many_pings` GOAWAY   | Keepalive is disabled by default; restart old clients                     |
+| Control panel port busy   | Use `--control-port`                                                      |
+| `Import error: fleet_sim` | Run from `TelemetryGrpcClient/` directory                                 |
 
 ---
 
@@ -183,4 +192,3 @@ If connecting by IP address, ensure the server certificate SAN includes that IP,
 
 - `FLEET_SIMULATOR_SUMMARY.md` (detailed architecture and roadmap)
 - `FIXES_APPLIED.md` (recent UI and reliability fixes)
-

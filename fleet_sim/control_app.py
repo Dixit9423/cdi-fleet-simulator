@@ -126,7 +126,6 @@ def get_emr_devices():
         return {"devices": [], "enabled": False, "message": "EMR simulator is not enabled"}
     payload = _emr_service.list_devices()
     payload["enabled"] = True
-    payload["dry_run"] = _emr_service.dry_run_mode
     return payload
 
 

@@ -127,11 +127,6 @@ def main():
         help="Disable TLS certificate verification for OpenEMR HTTPS",
     )
     parser.add_argument(
-        "--emr-live",
-        action="store_true",
-        help="Use live EMR APIs. Default is dry-run mode for backend-in-progress integration.",
-    )
-    parser.add_argument(
         "--enable-emr-ui",
         action="store_true",
         help="Start a standalone EMR-only control panel on a separate port",
@@ -179,13 +174,13 @@ def main():
             api_base_url=args.emr_api_base_url,
             access_token=args.emr_access_token or None,
             verify_ssl=not args.emr_no_verify_ssl,
-            dry_run=not args.emr_live,
+            dry_run=False,
         )
         emr_service.load()
         emr_service.start()
         print(
             f"[Fleet] EMR mode enabled: devices={emr_service.device_count}, "
-            f"dry_run={emr_service.dry_run_mode}"
+            "live_api=true"
         )
 
     # ── Load previously saved runtime state (optional) ──────────────────

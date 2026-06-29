@@ -436,7 +436,6 @@
         const assigned = devices.filter(
           (d) => !!d.patient_id && !!d.mapped_device_id,
         ).length;
-        const dryRun = summary.dry_run ? "ON" : "OFF";
 
         document.getElementById("kpis").innerHTML = `
     <div class="kpi total"><div class="value">${devices.length}</div><div class="label">EMR Devices</div></div>
@@ -444,7 +443,6 @@
     <div class="kpi idle"><div class="value">${waiting}</div><div class="label">Waiting Patient</div></div>
     <div class="kpi standby"><div class="value">${waitingMap}</div><div class="label">Waiting Mapping</div></div>
     <div class="kpi measuring"><div class="value">${assigned}</div><div class="label">Mapped</div></div>
-    <div class="kpi total"><div class="value">${dryRun}</div><div class="label">Dry Run</div></div>
   `;
       }
 
@@ -459,8 +457,7 @@
         if (status === "patient_and_device_mapped")
           return { text: "Patient and device mapped", cls: "ok" };
         if (status === "running") return { text: "Runner active", cls: "info" };
-        if (status === "dry_run_ok")
-          return { text: "Dry-run POST ok", cls: "ok" };
+        if (status === "dry_run_ok") return { text: "POST ok", cls: "ok" };
         if (status.startsWith("http_"))
           return {
             text: `Posted (${status.replace("http_", "HTTP ")})`,

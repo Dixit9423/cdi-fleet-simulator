@@ -51,19 +51,24 @@ jobs:
           if ("${{ github.ref_type }}" -ne "tag") {
             $version = "$version-$sha"
           }
-          $packageDir = "CDI-Fleet-Simulator-$version-Windows"
+          $packageDir = "CDICore-Simulator-Suite-$version-Windows"
           if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
           New-Item -ItemType Directory -Path $packageDir | Out-Null
           Copy-Item "dist\fleet_simulator\*" $packageDir -Recurse -Force
           Copy-Item "devices_config.yaml" $packageDir -Force
-          if (Test-Path "simulator\config\emr_config.yaml") {
-            New-Item -ItemType Directory -Path "$packageDir\simulator\config" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$packageDir\simulator\config" -Force | Out-Null
+          if (Test-Path "simulator\config\emr_config.yaml.documented") {
+            # Ship the documented template as runtime config name to avoid releasing real secrets.
+            Copy-Item "simulator\config\emr_config.yaml.documented" "$packageDir\simulator\config\emr_config.yaml" -Force
+          }
+          elseif (Test-Path "simulator\config\emr_config.yaml") {
             Copy-Item "simulator\config\emr_config.yaml" "$packageDir\simulator\config" -Force
           }
+          if (Test-Path ".env.example") { Copy-Item ".env.example" "$packageDir\.env" -Force }
+          if (Test-Path "CONFIG_USAGE_GUIDE.md") { Copy-Item "CONFIG_USAGE_GUIDE.md" $packageDir -Force }
           Copy-Item "README.md" $packageDir -Force
-          if (Test-Path "simulator\README.md") { Copy-Item "simulator\README.md" $packageDir -Force }
-          if (Test-Path "IMPLEMENTATION_STATUS.md") { Copy-Item "IMPLEMENTATION_STATUS.md" $packageDir -Force }
           Copy-Item "FLEET_SIMULATOR_SUMMARY.md" $packageDir -Force
+          if (Test-Path "HEMODYNAMIC_SIMULATOR_SUMMARY.md") { Copy-Item "HEMODYNAMIC_SIMULATOR_SUMMARY.md" $packageDir -Force }
           if (Test-Path "FLEET_IMPROVEMENTS_v2.md") { Copy-Item "FLEET_IMPROVEMENTS_v2.md" $packageDir -Force }
           $notesFile = "RELEASE_NOTES_$version.md"
           if (Test-Path $notesFile) { Copy-Item $notesFile $packageDir -Force }
@@ -73,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-release-zip
-          path: CDI-Fleet-Simulator-*.zip
+          path: CDICore-Simulator-Suite-*.zip
 
   publish-release:
     runs-on: ubuntu-latest
@@ -121,7 +126,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: CDI Fleet Simulator - ${{ github.ref_name }}
+          name: CDICore Simulator Suite - ${{ github.ref_name }}
           body: ${{ steps.notes.outputs.body }}
           files: |
             release-assets/*.zip
