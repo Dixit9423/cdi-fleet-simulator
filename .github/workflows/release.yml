@@ -85,44 +85,27 @@ jobs:
           }
           # Sanitize names so branch refs like feature/x do not create nested paths.
           $version = $version -replace '[\\/:*?"<>|]', '-'
-          $packageDir = "CDICore-Simulator-Suite-$version-Windows"
+          $packageDir = "CDICore-Simulator-Suite-Windows"
           if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
           New-Item -ItemType Directory -Path $packageDir | Out-Null
           New-Item -ItemType Directory -Path "$packageDir\fleet_simulator" -Force | Out-Null
           Copy-Item "dist\fleet_simulator\*" "$packageDir\fleet_simulator" -Recurse -Force
-          if (Test-Path "dist\fleet_simulator\fleet_simulator.exe") {
-            Copy-Item "dist\fleet_simulator\fleet_simulator.exe" "$packageDir\fleet_simulator.exe" -Force
-          }
           if (Test-Path "dist\hemodynamic_simulator") {
             New-Item -ItemType Directory -Path "$packageDir\hemodynamic_simulator" -Force | Out-Null
             Copy-Item "dist\hemodynamic_simulator\*" "$packageDir\hemodynamic_simulator" -Recurse -Force
-            if (Test-Path "dist\hemodynamic_simulator\hemodynamic_simulator.exe") {
-              Copy-Item "dist\hemodynamic_simulator\hemodynamic_simulator.exe" "$packageDir\hemodynamic_simulator.exe" -Force
-            }
           }
           Copy-Item "devices_config.yaml" $packageDir -Force
           New-Item -ItemType Directory -Path "$packageDir\simulator\config" -Force | Out-Null
 
-          $hasDocumentedConfig = Test-Path "simulator\config\emr_config.yaml.documented"
-          Get-ChildItem "simulator\config" -File | Where-Object {
-            $_.Name -like "*.yaml" -or $_.Name -like "*.yaml.documented"
-          } | ForEach-Object {
-            if ($hasDocumentedConfig -and $_.Name -eq "emr_config.yaml") {
-              return
-            }
-            Copy-Item $_.FullName "$packageDir\simulator\config\$($_.Name)" -Force
-          }
-
-          if ($hasDocumentedConfig) {
-            # Ship the documented template as runtime config name to avoid releasing real secrets.
+          # Ship only the single emr_config.yaml (use documented template if available to avoid secrets).
+          if (Test-Path "simulator\config\emr_config.yaml.documented") {
             Copy-Item "simulator\config\emr_config.yaml.documented" "$packageDir\simulator\config\emr_config.yaml" -Force
           }
+          elseif (Test-Path "simulator\config\emr_config.yaml") {
+            Copy-Item "simulator\config\emr_config.yaml" "$packageDir\simulator\config\emr_config.yaml" -Force
+          }
           if (Test-Path ".env.example") { Copy-Item ".env.example" "$packageDir\.env" -Force }
-          if (Test-Path "CONFIG_USAGE_GUIDE.md") { Copy-Item "CONFIG_USAGE_GUIDE.md" $packageDir -Force }
           Copy-Item "README.md" $packageDir -Force
-          Copy-Item "FLEET_SIMULATOR_SUMMARY.md" $packageDir -Force
-          if (Test-Path "HEMODYNAMIC_SIMULATOR_SUMMARY.md") { Copy-Item "HEMODYNAMIC_SIMULATOR_SUMMARY.md" $packageDir -Force }
-          if (Test-Path "FLEET_IMPROVEMENTS_v2.md") { Copy-Item "FLEET_IMPROVEMENTS_v2.md" $packageDir -Force }
           $notesFile = "RELEASE_NOTES_$version.md"
           if (Test-Path $notesFile) { Copy-Item $notesFile $packageDir -Force }
           $zipPath = "$packageDir.zip"
@@ -132,7 +115,7 @@ jobs:
       - name: Upload packaged zip
         uses: actions/upload-artifact@v4
         with:
-          name: windows-release-zip
+          name: CDI-Core-EMR-Simulator-Suite-Windows
           path: ${{ steps.package.outputs.zip_path }}
           if-no-files-found: error
 
@@ -150,7 +133,7 @@ jobs:
       - name: Download packaged zip
         uses: actions/download-artifact@v4
         with:
-          name: windows-release-zip
+          name: CDI-Core-EMR-Simulator-Suite-Windows
           path: release-assets
 
       - name: Resolve release notes
