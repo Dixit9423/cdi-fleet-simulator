@@ -3,15 +3,15 @@ name: Publish Release
 on:
   push:
     branches:
-      - main
+      - "*"
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch, tag, or SHA to build (example: main)'
-        required: true
-        default: 'main'
+        description: "Branch, tag, or SHA to build (example: feature/Hemodynamic-Simulator)"
+        required: false
+        default: "feature/Hemodynamic-Simulator"
 
 permissions:
   contents: write
@@ -25,12 +25,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Show build source
+        shell: pwsh
+        run: |
+          Write-Host "Trigger ref: ${{ github.ref }}"
+          Write-Host "Ref type: ${{ github.ref_type }}"
+          Write-Host "Requested build ref: ${{ github.event.inputs.ref }}"
+          Write-Host "Checked out branch: $(git branch --show-current)"
+          Write-Host "Checked out commit: $(git rev-parse HEAD)"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         shell: pwsh
@@ -43,7 +52,30 @@ jobs:
         run: |
           pyinstaller --clean --noconfirm fleet_simulator.spec
 
+      - name: Build hemodynamic simulator executable
+        shell: pwsh
+        run: |
+          $entryScript = $null
+          if (Test-Path "run_emr_service.py") { $entryScript = "run_emr_service.py" }
+          elseif (Test-Path "simulator/main.py") { $entryScript = "simulator/main.py" }
+
+          if (-not $entryScript) {
+            Write-Host "::warning::Hemodynamic entry script not found (run_emr_service.py / simulator/main.py). Skipping hemodynamic build."
+            exit 0
+          }
+
+          Write-Host "Building hemodynamic simulator from $entryScript"
+          $addData = @()
+          if (Test-Path "fleet_sim/templates/emr_control_panel.html") {
+            $addData = @("--add-data", "fleet_sim/templates/emr_control_panel.html;fleet_sim/templates")
+          }
+          if (Test-Path "simulator/config") {
+            $addData += @("--add-data", "simulator/config;simulator/config")
+          }
+          pyinstaller --clean --noconfirm --name hemodynamic_simulator --onedir --paths . @addData $entryScript
+
       - name: Create release package
+        id: package
         shell: pwsh
         run: |
           $sha = "${{ github.sha }}".Substring(0, 7)
@@ -51,23 +83,41 @@ jobs:
           if ("${{ github.ref_type }}" -ne "tag") {
             $version = "$version-$sha"
           }
-          $packageDir = "CDI-Fleet-Simulator-$version-Windows"
+          # Sanitize names so branch refs like feature/x do not create nested paths.
+          $version = $version -replace '[\\/:*?"<>|]', '-'
+          $packageDir = "CDICore-Simulator-Suite-Windows"
           if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
           New-Item -ItemType Directory -Path $packageDir | Out-Null
-          Copy-Item "dist\fleet_simulator\*" $packageDir -Recurse -Force
+          New-Item -ItemType Directory -Path "$packageDir\fleet_simulator" -Force | Out-Null
+          Copy-Item "dist\fleet_simulator\*" "$packageDir\fleet_simulator" -Recurse -Force
+          if (Test-Path "dist\hemodynamic_simulator") {
+            New-Item -ItemType Directory -Path "$packageDir\hemodynamic_simulator" -Force | Out-Null
+            Copy-Item "dist\hemodynamic_simulator\*" "$packageDir\hemodynamic_simulator" -Recurse -Force
+          }
           Copy-Item "devices_config.yaml" $packageDir -Force
+          New-Item -ItemType Directory -Path "$packageDir\hemodynamic_simulator\simulator\config" -Force | Out-Null
+
+          # Ship only the single emr_config.yaml (use documented template if available to avoid secrets).
+          if (Test-Path "simulator\config\emr_config.yaml.documented") {
+            Copy-Item "simulator\config\emr_config.yaml.documented" "$packageDir\hemodynamic_simulator\simulator\config\emr_config.yaml" -Force
+          }
+          elseif (Test-Path "simulator\config\emr_config.yaml") {
+            Copy-Item "simulator\config\emr_config.yaml" "$packageDir\hemodynamic_simulator\simulator\config\emr_config.yaml" -Force
+          }
+          if (Test-Path ".env.example") { Copy-Item ".env.example" "$packageDir\.env" -Force }
           Copy-Item "README.md" $packageDir -Force
-          Copy-Item "FLEET_SIMULATOR_SUMMARY.md" $packageDir -Force
-          if (Test-Path "FLEET_IMPROVEMENTS_v2.md") { Copy-Item "FLEET_IMPROVEMENTS_v2.md" $packageDir -Force }
           $notesFile = "RELEASE_NOTES_$version.md"
           if (Test-Path $notesFile) { Copy-Item $notesFile $packageDir -Force }
-          Compress-Archive -Path "$packageDir\*" -DestinationPath "$packageDir.zip" -Force
+          $zipPath = "$packageDir.zip"
+          Compress-Archive -Path "$packageDir\*" -DestinationPath $zipPath -Force
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload packaged zip
         uses: actions/upload-artifact@v4
         with:
-          name: windows-release-zip
-          path: CDI-Fleet-Simulator-*.zip
+          name: CDI-Core-EMR-Simulator-Suite-Windows
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error
 
   publish-release:
     runs-on: ubuntu-latest
@@ -83,7 +133,7 @@ jobs:
       - name: Download packaged zip
         uses: actions/download-artifact@v4
         with:
-          name: windows-release-zip
+          name: CDI-Core-EMR-Simulator-Suite-Windows
           path: release-assets
 
       - name: Resolve release notes
@@ -115,7 +165,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: CDI Fleet Simulator - ${{ github.ref_name }}
+          name: CDICore Simulator Suite - ${{ github.ref_name }}
           body: ${{ steps.notes.outputs.body }}
           files: |
             release-assets/*.zip

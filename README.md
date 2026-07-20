@@ -1,186 +1,424 @@
-# CDI Core Fleet Simulator
+# Configuration Guide for CDI & EMR Fleet Simulators
 
-This directory contains a Python-based, config-driven fleet simulator for CDI Core telemetry.
+## Quick Start
 
-It simulates multiple CDI Core devices, each with its own gRPC bidirectional `TelemetrySession`, and includes a FastAPI control panel for runtime operations.
+### For CDI Fleet Simulator (gRPC)
+
+Edit: `devices_config.yaml`
+
+- Change server host/port
+- Modify device profiles and tick data
+- Update TLS certificate paths
+
+### For EMR Service Simulator (REST API)
+
+Edit: `simulator/config/emr_config.yaml`
+
+- Recommended: Use the documented version `emr_config.yaml.documented`
+- Set OAuth credentials in `simulator/config/emr_config.yaml` (current runtime behavior)
+- `.env` is a template for operators; values are not auto-resolved into YAML today
+- Adjust profiles and device parameters
 
 ---
 
-## Overview
+## Configuration File Comparison
 
-- Simulates 6 CDI Core devices by default
-- Supports mTLS 1.3 and insecure mode
-- Uses YAML config for devices, profiles, and parameter metadata
-- Includes runtime control panel (state changes, patient bind/release, profile switch, tick updates)
-- Preserves legacy clients (`CoreClientReal.py`, `CoreClientDemo.py`) for reference
+| Aspect               | devices_config.yaml             | emr_config.yaml                         |
+| -------------------- | ------------------------------- | --------------------------------------- |
+| **Purpose**          | CDI Core gRPC device simulation | EMR REST API device simulation          |
+| **Documentation**    | ✅ Excellent                    | ⚠️ Minimal (improved version available) |
+| **Secrets**          | 🟢 None (cert paths only)       | 🔴 Real credentials exposed             |
+| **Profiles**         | Named parameter sets            | Multi-phase scenarios                   |
+| **Device Count**     | 11 devices                      | 5 devices                               |
+| **Update Frequency** | Tick interval (~1s)             | Poll interval (5s)                      |
 
 ---
 
-## Directory structure
+## How to Update Each File
 
-```text
-TelemetryGrpcClient/
-├── run_fleet.py               # Entry point
-├── devices_config.yaml        # Main simulator config
-├── generate_certs.py          # Self-signed cert generator
-├── requirements_fleet.txt     # Python dependencies
-├── fleet_sim/
-│   ├── config.py
-│   ├── mtls.py
-│   ├── state_store.py
-│   ├── device_runner.py
-│   ├── fleet_manager.py
-│   ├── control_app.py
-│   └── templates/control_panel.html
-├── CoreClientReal.py          # Legacy single-device client
-├── CoreClientDemo.py          # Legacy demo client
-└── README.md
+### devices_config.yaml
+
+**When to edit:**
+
+- Change gRPC server address (default: `10.124.212.175:9090`)
+- Adjust certificate paths for mTLS
+- Add/remove simulated devices
+- Modify parameter definitions or profiles
+- Change data tick values (simulated measurements)
+
+**Example: Change gRPC Server**
+
+```yaml
+server:
+  host: "your.server.address" # ← Change this
+  port: 9090
+  tls:
+    enabled: true
+    cert_dir: "~/your/cert/path" # ← And this
 ```
 
-Proto stubs are imported from:
+**Example: Add a New Device**
 
-- `../src/Telemetry/proto/telemetry.proto`
+```yaml
+devices:
+  - serial: "C1000000"
+    sw_version: "1.0.0"
+    site: "New-Location"
+    initial_state: "IDLE"
+    profile: "full_bypass"
+    probes:
+      "Arterial BPM": "B1000000"
+      # ... add required probe personalities
+```
+
+### emr_config.yaml (or emr_config.yaml.documented)
+
+**When to edit:**
+
+- Change EMR API endpoint
+- Add/remove simulated devices
+- Adjust parameter ranges
+- Modify simulation profiles
+- Add new phases to profiles
+
+**Security note (current runtime behavior):**
+
+- OAuth credentials are currently read from `emr_config.yaml`.
+- Keep real secrets only in local/private copies of this file.
+- Never commit real usernames/passwords/client secrets to Git.
+
+**Example: Change API Endpoint**
+
+```yaml
+api_base_url: "http://your.emr.server:port/apis/default"
+```
+
+**Example: Add a New Parameter**
+
+```yaml
+parameters:
+  # ... existing params ...
+  new_param:
+    display_name: "New Parameter"
+    unit: "units"
+    category: "Category"
+    min: 0
+    max: 100
+```
 
 ---
 
-## Prerequisites
+## OAuth Credentials Management
 
-- Python 3.10+
-- `pip`
-- Access to telemetry proto stubs (`telemetry_pb2.py`, `telemetry_pb2_grpc.py`)
+Current behavior: OAuth credentials are read from `simulator/config/emr_config.yaml`.
+The simulator does not automatically resolve `${ENV_VAR:default}` placeholders from `.env` yet.
 
-Install dependencies:
+### Recommended (current): Configure OAuth in emr_config.yaml
+
+Set these fields under `oauth:` in `simulator/config/emr_config.yaml`:
+
+```yaml
+oauth:
+  token_url: "http://your-emr-host/oauth2/default/token"
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+  username: "your-username"
+  password: "your-password"
+  user_role: "users"
+  scope: "api:oemr ..."
+```
+
+### Optional: Use a bearer token instead of OAuth password flow
+
+If you already have a valid access token, pass it at runtime:
+
+```powershell
+.\hemodynamic_simulator\hemodynamic_simulator.exe --emr-access-token <token>
+```
+
+### Why `.env` is still included
+
+`.env` in the release package is optional and provided as an operator template.
+It is not the active OAuth source unless env loading is implemented in code.
+
+### Solution 2: Use Docker Secrets
 
 ```bash
-pip install -r requirements_fleet.txt
+docker run \
+  -e EMR_OAUTH_CLIENT_ID="$OAUTH_CLIENT_ID" \
+  -e EMR_OAUTH_CLIENT_SECRET="$OAUTH_CLIENT_SECRET" \
+  cdi-emr-simulator:latest
 ```
 
 ---
 
-## Quick start
+## Parameter Definition Guide
 
-From `Linux/CdiCoreMain/TelemetryGrpcClient`:
+Each parameter in both configs represents a measurable medical value:
 
-```bash
-# 1) Install dependencies
-pip install -r requirements_fleet.txt
+### Structure (emr_config.yaml)
 
-# 2) Generate mTLS certificates (optional, for secure mode)
-python generate_certs.py
-
-# 3) Run simulator
-python run_fleet.py
+```yaml
+parameters:
+  map:
+    display_name: "MAP" # How it appears in reports/UI
+    unit: "mmHg" # Unit of measurement
+    category: "Arterial" # Classification
+    min: 60 # Minimum for random generation
+    max: 110 # Maximum for random generation
 ```
 
-Open control panel:
+### Structure (devices_config.yaml)
 
-```text
-http://localhost:8090
+```yaml
+param_catalog:
+  70: # param_id (must match CDI proto)
+    name: "VO2" # Parameter name
+    unit: "mL/min" # Unit
+    source_personality: "Core Calculated" # Device that provides this
+    alarm_limit: # Alarm thresholds
+      present: true
+      low: "150"
+      high: "400"
+    range: # Operational ranges
+      present: true
+      display_low: "150"
+      display_high: "400"
+      operating_low: "100"
+      operating_high: "800"
+```
+
+### Common Parameters
+
+| Parameter       | Display Name           | Unit   | Category | Use Case                   |
+| --------------- | ---------------------- | ------ | -------- | -------------------------- |
+| `map`           | Mean Arterial Pressure | mmHg   | Arterial | Perfusion adequacy         |
+| `heart_rate`    | Heart Rate             | bpm    | Other    | Cardiovascular status      |
+| `etco2`         | End-tidal CO2          | mmHg   | Venous   | Ventilation/perfusion      |
+| `arterial_flow` | Arterial Flow          | L/min  | Other    | Bypass flow rate           |
+| `rso2`          | Cerebral O2 Saturation | %      | Other    | Brain perfusion            |
+| `lactate`       | Lactate                | mmol/L | Other    | Tissue perfusion indicator |
+| `glucose`       | Blood Glucose          | mg/dL  | Other    | Metabolic status           |
+
+---
+
+## Profile Definition Guide
+
+### Profiles for CDI (devices_config.yaml)
+
+Profiles specify which parameters to report:
+
+```yaml
+profiles:
+  full_bypass:
+    do2i_threshold: 280 # Critical threshold for alerts
+    manual_hgb: 12.5 # Manual hemoglobin input
+    manual_so2: 65 # Manual saturation input
+    flow_source: "Flow_Red" # Which flow sensor to use
+    param_ids: [76, 70, 74, ...] # Parameters to include
+    selected_param_ids: [76, 70, ...] # Prioritized parameters
+```
+
+### Profiles for EMR (emr_config.yaml)
+
+Profiles define multi-phase simulation scenarios:
+
+```yaml
+profiles:
+  hemo_monitor_baseline:
+    description: "High support bypass-like flow..."
+    phase_seconds: 45 # Each phase lasts 45 seconds
+    volatility: 0.9 # High variability (0.0-1.0)
+    phase_sequence: [baseline, stress, recovery] # Cycle pattern
+    targets:
+      baseline: # Phase 1: normal operation
+        map: 82
+        heart_rate: 78
+        # ... other parameters ...
+      stress: # Phase 2: stress/alert condition
+        map: 72
+        heart_rate: 94
+        # ... other parameters ...
+      recovery: # Phase 3: recovery
+        map: 88
+        heart_rate: 82
+        # ... other parameters ...
 ```
 
 ---
 
-## Run options
+## Device Configuration Guide
 
-```bash
-python run_fleet.py --help
-python run_fleet.py --config my_config.yaml
-python run_fleet.py --control-port 9000
-python run_fleet.py --insecure
-python run_fleet.py --no-control
-python run_fleet.py --no-persist
+### Devices in devices_config.yaml (CDI)
+
+```yaml
+devices:
+  - serial: "C1234567" # Device serial (unique ID)
+    sw_version: "1.0.0" # Software version
+    site: "OR-1" # Physical location
+    initial_state: "IDLE" # Starting state: IDLE, STANDBY, MEASURING
+    patient_id: null # Patient binding (null = unbound)
+    profile: null # Profile name (null = no profile)
+    probes: # Device probe identifiers
+      "Arterial BPM": "B0050034"
+      "Venous BPM": "V1234567"
+      # ... other personalities ...
+    tick_data: # Cyclic data values (for MEASURING)
+      76: ["89", "88", "90", ...]
+      70: ["0", "0", "1", ...]
+      # ... other param IDs ...
 ```
 
-### Main flags
+### Devices in emr_config.yaml (EMR)
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--config`, `-c` | `devices_config.yaml` | YAML configuration path |
-| `--insecure` | `False` | Disable TLS and use insecure channel |
-| `--control-port` | `8090` | Control panel HTTP port |
-| `--no-control` | `False` | Disable control panel |
-| `--state-file` | `.fleet_runtime_state.json` | Runtime state file |
-| `--no-persist` | Source: OFF, EXE: ON | Disable runtime state persistence |
+```yaml
+devices:
+  - device_id: "Hemo-C1234567" # Internal device ID
+    mode: "emr" # "emr" or "grpc"
+    emr_lookup_device_id: "Hemo-C1234567" # EMR system ID
+    device_type: "hemodynamic" # Device classification
+    patient_identifier: "1" # Link to patient record
+    notes: "Patient stable" # Descriptive notes
+    enabled: true # Active flag
+    poll_interval: 5 # EMR status poll (seconds)
+    send_interval: 1 # Telemetry send interval (seconds)
+    case: "within_range" # Scenario type
+    profile: "hemo_monitor_baseline" # Profile name
+```
 
----
+### Device Case Types (EMR)
 
-## Control panel API
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/` | Web UI |
-| GET | `/api/fleet` | All devices |
-| GET | `/api/fleet/summary` | Fleet KPIs |
-| GET | `/api/profiles` | Profiles |
-| GET | `/api/devices/{id}` | Single device |
-| POST | `/api/devices/{id}/state` | Change state |
-| POST | `/api/devices/{id}/patient` | Bind/release patient |
-| POST | `/api/devices/{id}/profile` | Switch profile |
-| POST | `/api/devices/{id}/tick` | Update tick values |
-
----
-
-## Telemetry behavior per device
-
-Each device runner follows this sequence:
-
-1. Connect and open stream
-2. Send `DeviceAnnouncement`
-3. Send startup `CoreStateEvent` (including `IDLE` startup event)
-4. If measuring: send `ProfileMetadata`, then `DataTick` at 1-second cadence
-5. Process runtime commands from control panel
-6. On shutdown: send `CoreStateEvent(IDLE)` and close stream
-
----
-
-## Configuration notes
-
-Configure everything in `devices_config.yaml`:
-
-- Server host/port
-- TLS cert paths
-- Device list and startup states
-- Profiles and parameter IDs
-- Parameter metadata (units, limits, ranges)
-- Per-device tick value sequences
-
-This enables adding profiles, parameters, or devices without code changes.
-
----
-
-## mTLS notes
-
-Example cert bundle location used by tooling:
-
-- `~/Downloads/certs 1`
-
-Typical files:
-
-- `ca.crt`
-- `client.crt`
-- `client-pkcs8.key`
-- `server.crt`
-- `server.key`
-
-If connecting by IP address, ensure the server certificate SAN includes that IP, or set `tls.server_name_override` to a SAN DNS name.
+| Case           | Meaning                      | Use                    |
+| -------------- | ---------------------------- | ---------------------- |
+| `within_range` | All parameters normal        | Baseline testing       |
+| `mixed`        | Some parameters out-of-range | Alert testing          |
+| `low_limit`    | Parameters near low alarms   | Low condition testing  |
+| `high_limit`   | Parameters near high alarms  | High condition testing |
 
 ---
 
 ## Troubleshooting
 
-| Issue | Action |
-|------|--------|
-| Proto stubs not found | Generate with `python -m grpc_tools.protoc ...` as shown by runtime error |
-| Cert file not found | Run `python generate_certs.py` or fix `cert_dir` in YAML |
-| Channel not ready | Confirm server is running; try `--insecure` for local tests |
-| `too_many_pings` GOAWAY | Keepalive is disabled by default; restart old clients |
-| Control panel port busy | Use `--control-port` |
-| `Import error: fleet_sim` | Run from `TelemetryGrpcClient/` directory |
+### Issue: "Cannot connect to server"
+
+**Cause:** Wrong host/port in config  
+**Solution:** Update `server.host` and `server.port` in `devices_config.yaml`
+
+### Issue: "TLS certificate verification failed"
+
+**Cause:** Missing certificate files or wrong path  
+**Solution:** Check `cert_dir` points to correct location; verify file names
+
+### Issue: "OAuth authentication failed"
+
+**Cause:** Missing or wrong credentials  
+**Solution:** Update `oauth` values in `simulator/config/emr_config.yaml` (or pass `--emr-access-token`)
+
+### Issue: "Device profile not found"
+
+**Cause:** Profile name typo  
+**Solution:** Match profile name exactly (case-sensitive) to `profiles:` section
+
+### Issue: "Parameter ID mismatch"
+
+**Cause:** param_id doesn't exist in `param_catalog`  
+**Solution:** Add missing parameter to `param_catalog` or use existing ID
 
 ---
 
-## Related docs
+## Best Practices
 
-- `FLEET_SIMULATOR_SUMMARY.md` (detailed architecture and roadmap)
-- `FIXES_APPLIED.md` (recent UI and reliability fixes)
+### ✅ DO:
 
+- Edit config files for testing scenarios
+- Keep OAuth secrets in local/private config only
+- Add comments explaining custom parameters
+- Version control configurations (without secrets)
+- Test after major config changes
+- Keep backups of working configs
+
+### ❌ DON'T:
+
+- Commit OAuth credentials to Git
+- Share `.env` files via email/chat
+- Hardcode secrets in Python code
+- Modify generated protobuf files
+- Change parameter IDs without coordination
+- Leave debug logging enabled in production
+
+---
+
+## Release Package Layout (ZIP)
+
+The release ZIP contains pre-built Windows executables. No Python installation is required.
+
+```
+CDICore-Simulator-Suite-<version>-Windows/
+├── fleet_simulator/                   ← CDI gRPC simulator folder
+│   ├── fleet_simulator.exe            ← Run this
+│   └── ...
+├── hemodynamic_simulator/             ← EMR hemodynamic simulator folder
+│   ├── hemodynamic_simulator.exe      ← Run this
+│   └── ...
+├── devices_config.yaml                ← CDI gRPC config (edit before running)
+├── .env                               ← Optional template file (not active OAuth source today)
+├── README.md
+└── simulator/
+    └── config/
+        └── emr_config.yaml            ← EMR runtime config (edit before running)
+```
+
+### Running from the release package
+
+**CDI Fleet Simulator:**
+
+```powershell
+# From the extracted ZIP directory
+.\fleet_simulator\fleet_simulator.exe --insecure
+.\fleet_simulator\fleet_simulator.exe --help
+.\fleet_simulator\fleet_simulator.exe --config ..\devices_config.yaml --control-port 8090
+```
+
+**Hemodynamic (EMR) Simulator:**
+
+```powershell
+# Normal mode
+.\hemodynamic_simulator\hemodynamic_simulator.exe
+
+# With UI on custom port
+.\hemodynamic_simulator\hemodynamic_simulator.exe --ui-port 3001
+
+# Live mode with EMR backend with different access tokens and keys.
+.\hemodynamic_simulator\hemodynamic_simulator.exe --config-dir simulator\config --emr-api-base-url https://your-emr-host/apis/default --emr-access-token <token>
+```
+
+> **Note:** Each `.exe` must remain inside its own folder. Do not move it out.
+
+---
+
+## Next Steps
+
+1. **Optional:** Create `.env` file (template only)
+
+   ```bash
+   cp .env.example .env
+   ```
+
+# Optional reference template for operators
+
+```
+
+Ensure `.env` is in `.gitignore` so credentials are never committed.
+
+2. **Configure EMR:** Edit `simulator/config/emr_config.yaml` directly
+- Set `api_base_url` to your EMR endpoint
+- Adjust device list, profiles, and parameter ranges
+- Set OAuth values in `oauth:` for current runtime behavior
+
+> **Note:** `emr_config.yaml.documented` is a fully commented reference template
+> used by the CI release pipeline. It is not a replacement for the runtime config.
+
+3. **Store credentials securely**
+- Use environment variables or a secrets vault
+- Never commit secrets to Git
+```

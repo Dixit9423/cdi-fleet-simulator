@@ -1,0 +1,23 @@
+devices:
+  - device_id: "Hemo-C1234567"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234567"
+    device_type: "Terumo"
+    patient_identifier: "1"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "within_range"
+    profile: "hemo_monitor_baseline"
+  - device_id: "Hemo-C1234568"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234568"
+    device_type: "Terumo"
+    patient_identifier: "1"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "mixed"
+    profile: "hemo_cerebral_watch"

@@ -1,0 +1,10 @@
+oauth:
+  # Do not commit real secrets. Fill values locally or through secret management.
+  token_url: "https://192.168.1.9/oauth2/default/token"
+  grant_type: "password"
+  client_id: ""
+  client_secret: ""
+  username: ""
+  password: ""
+  user_role: "users"
+  scope: "api:oemr user/Patient.read user/Patient.write user/patient.read user/patient.write user/Encounter.rs user/encounter.crus"

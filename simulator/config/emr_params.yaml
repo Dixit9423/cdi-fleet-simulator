@@ -1,0 +1,73 @@
+parameters:
+  map:
+    display_name: "MAP"
+    unit: "mmHg"
+    category: "Arterial"
+    min: 60
+    max: 110
+  systolic_bp:
+    display_name: "Systolic BP"
+    unit: "mmHg"
+    category: "Arterial"
+    min: 90
+    max: 160
+  diastolic_bp:
+    display_name: "Diastolic BP"
+    unit: "mmHg"
+    category: "Arterial"
+    min: 50
+    max: 100
+  heart_rate:
+    display_name: "Heart Rate"
+    unit: "bpm"
+    category: "Other"
+    min: 50
+    max: 120
+  etco2:
+    display_name: "EtCO2"
+    unit: "mmHg"
+    category: "Venous"
+    min: 30
+    max: 50
+  arterial_flow:
+    display_name: "Arterial Flow"
+    unit: "L/min"
+    category: "Other"
+    min: 2.0
+    max: 6.0
+  sweep:
+    display_name: "Sweep"
+    unit: "L/min"
+    category: "Other"
+    min: 0.5
+    max: 3.0
+  fio2:
+    display_name: "FiO2"
+    unit: "%"
+    category: "Other"
+    min: 21
+    max: 100
+  rso2:
+    display_name: "Cerebral Oxygen Saturation"
+    unit: "%"
+    category: "Other"
+    min: 45
+    max: 80
+  act:
+    display_name: "ACT"
+    unit: "sec"
+    category: "Other"
+    min: 80
+    max: 240
+  lactate:
+    display_name: "Lactate"
+    unit: "mmol/L"
+    category: "Other"
+    min: 0.5
+    max: 5.0
+  glucose:
+    display_name: "Glucose"
+    unit: "mg/dL"
+    category: "Other"
+    min: 70
+    max: 180

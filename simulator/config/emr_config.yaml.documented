@@ -1,0 +1,412 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# emr_config.yaml  —  EMR Service Simulator Configuration
+#
+# This file configures the EMR (Electronic Medical Record) API simulator used
+# alongside the CDI Fleet Simulator for end-to-end hemodynamic monitoring testing.
+#
+# Sections:
+#   api_base_url    → Target EMR API endpoint (OpenEMR compatible)
+#   parameters      → Hemodynamic parameter definitions (min/max operational ranges)
+#   profiles        → Simulated patient data profiles with phase sequences
+#   oauth           → OAuth2 credentials (replace with env vars)
+#   devices         → EMR device mappings with simulation cases
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# API CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+# Target EMR API endpoint. Simulator will connect to this URL for patient/device
+# lookup and to push simulated telemetry data.
+api_base_url: "http://192.168.29.116:8081/apis/default"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PARAMETERS  —  Hemodynamic Data Definitions
+# ═══════════════════════════════════════════════════════════════════════════════
+# Each parameter represents a measurable hemodynamic value that the simulator
+# will generate during the "measuring" phase. The min/max represent typical
+# operational ranges (not hard limits) for realistic simulation.
+#
+# Fields:
+#   display_name      → Human-readable name (shown in UI/reports)
+#   unit              → Unit of measurement
+#   category          → Blood pressure classification (Arterial|Venous|Other)
+#   min               → Minimum typical value for random generation
+#   max               → Maximum typical value for random generation
+# ─────────────────────────────────────────────────────────────────────────────
+parameters:
+  # Arterial Pressure Parameters
+  map:
+    display_name: "MAP"                    # Mean Arterial Pressure
+    unit: "mmHg"
+    category: "Arterial"
+    min: 60
+    max: 110
+  systolic_bp:
+    display_name: "Systolic BP"            # Systolic Blood Pressure
+    unit: "mmHg"
+    category: "Arterial"
+    min: 90
+    max: 160
+  diastolic_bp:
+    display_name: "Diastolic BP"           # Diastolic Blood Pressure
+    unit: "mmHg"
+    category: "Arterial"
+    min: 50
+    max: 100
+  
+  # Cardiovascular Parameters
+  heart_rate:
+    display_name: "Heart Rate"             # Beats per minute
+    unit: "bpm"
+    category: "Other"
+    min: 50
+    max: 120
+  
+  # Pulmonary & Gas Exchange
+  etco2:
+    display_name: "EtCO2"                  # End-tidal CO2
+    unit: "mmHg"
+    category: "Venous"
+    min: 30
+    max: 50
+  fio2:
+    display_name: "FiO2"                   # Fraction of inspired oxygen
+    unit: "%"
+    category: "Other"
+    min: 21
+    max: 100
+  
+  # Flow & Perfusion
+  arterial_flow:
+    display_name: "Arterial Flow"          # Arterial perfusion flow
+    unit: "L/min"
+    category: "Other"
+    min: 2.0
+    max: 6.0
+  sweep:
+    display_name: "Sweep"                  # Sweep gas flow
+    unit: "L/min"
+    category: "Other"
+    min: 0.5
+    max: 3.0
+  
+  # Oxygenation & Saturation
+  rso2:
+    display_name: "Cerebral Oxygen Saturation"  # Regional SO2
+    unit: "%"
+    category: "Other"
+    min: 45
+    max: 80
+  
+  # Coagulation & Metabolism
+  act:
+    display_name: "ACT"                    # Activated Clotting Time
+    unit: "sec"
+    category: "Other"
+    min: 80
+    max: 240
+  lactate:
+    display_name: "Lactate"                # Serum lactate (indicator of perfusion)
+    unit: "mmol/L"
+    category: "Other"
+    min: 0.5
+    max: 5.0
+  glucose:
+    display_name: "Glucose"                # Blood glucose
+    unit: "mg/dL"
+    category: "Other"
+    min: 70
+    max: 180
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROFILES  —  Simulated Patient Data Profiles
+# ═══════════════════════════════════════════════════════════════════════════════
+# Each profile defines a multi-phase simulation pattern that evolves over time.
+# Profiles simulate realistic patient scenarios (e.g., baseline → stress → recovery).
+#
+# Fields:
+#   description       → Scenario explanation (e.g., "bypass-like flow")
+#   phase_seconds     → Duration of each phase cycle (seconds)
+#   volatility        → Variability of values: 0.0 (stable) to 1.0 (highly variable)
+#   phase_sequence    → Ordered list of phases to cycle through
+#   targets           → For each phase, the target values per parameter
+# ─────────────────────────────────────────────────────────────────────────────
+profiles:
+  hemo_monitor_baseline:
+    description: "High support bypass-like flow with tight oxygen delivery tracking"
+    phase_seconds: 45
+    volatility: 0.9
+    phase_sequence: [baseline, stress, recovery]
+    targets:
+      baseline:
+        map: 82
+        systolic_bp: 118
+        diastolic_bp: 68
+        heart_rate: 78
+        etco2: 36
+        arterial_flow: 4.8
+        sweep: 1.8
+        fio2: 70
+        rso2: 66
+        act: 180
+        lactate: 1.6
+        glucose: 120
+      stress:
+        map: 72
+        systolic_bp: 102
+        diastolic_bp: 58
+        heart_rate: 94
+        etco2: 31
+        arterial_flow: 4.2
+        sweep: 2.2
+        fio2: 78
+        rso2: 58
+        act: 210
+        lactate: 2.8
+        glucose: 145
+      recovery:
+        map: 88
+        systolic_bp: 126
+        diastolic_bp: 72
+        heart_rate: 82
+        etco2: 35
+        arterial_flow: 4.9
+        sweep: 1.7
+        fio2: 62
+        rso2: 68
+        act: 170
+        lactate: 1.9
+        glucose: 125
+
+  hemo_perfusion_balance:
+    description: "Balanced perfusion with arterial and venous focus"
+    phase_seconds: 50
+    volatility: 0.8
+    phase_sequence: [baseline, venous_shift, baseline]
+    targets:
+      baseline:
+        map: 84
+        systolic_bp: 122
+        diastolic_bp: 70
+        heart_rate: 76
+        etco2: 37
+        arterial_flow: 4.6
+        sweep: 1.6
+        fio2: 60
+        rso2: 67
+        act: 165
+        lactate: 1.4
+        glucose: 112
+      venous_shift:
+        map: 78
+        systolic_bp: 114
+        diastolic_bp: 64
+        heart_rate: 88
+        etco2: 41
+        arterial_flow: 4.3
+        sweep: 1.9
+        fio2: 65
+        rso2: 63
+        act: 185
+        lactate: 2.1
+        glucose: 124
+
+  hemo_oxygen_delivery:
+    description: "DO2-centric profile with flow and FiO2 optimization"
+    phase_seconds: 40
+    volatility: 1.0
+    phase_sequence: [baseline, low_delivery, correction]
+    targets:
+      baseline:
+        map: 80
+        systolic_bp: 116
+        diastolic_bp: 66
+        heart_rate: 80
+        etco2: 35
+        arterial_flow: 5.1
+        sweep: 2.0
+        fio2: 72
+        rso2: 65
+        act: 175
+        lactate: 1.8
+        glucose: 118
+      low_delivery:
+        map: 70
+        systolic_bp: 102
+        diastolic_bp: 56
+        heart_rate: 96
+        etco2: 32
+        arterial_flow: 3.9
+        sweep: 2.4
+        fio2: 84
+        rso2: 57
+        act: 205
+        lactate: 3.4
+        glucose: 138
+      correction:
+        map: 85
+        systolic_bp: 124
+        diastolic_bp: 72
+        heart_rate: 84
+        etco2: 36
+        arterial_flow: 5.3
+        sweep: 1.8
+        fio2: 66
+        rso2: 69
+        act: 180
+        lactate: 2.0
+        glucose: 122
+
+  hemo_cerebral_watch:
+    description: "Cerebral oxygenation sensitive profile"
+    phase_seconds: 35
+    volatility: 0.85
+    phase_sequence: [baseline, cerebral_drop, stabilization]
+    targets:
+      baseline:
+        map: 86
+        systolic_bp: 124
+        diastolic_bp: 72
+        heart_rate: 74
+        etco2: 37
+        arterial_flow: 4.7
+        sweep: 1.7
+        fio2: 58
+        rso2: 70
+        act: 160
+        lactate: 1.3
+        glucose: 108
+      cerebral_drop:
+        map: 76
+        systolic_bp: 110
+        diastolic_bp: 60
+        heart_rate: 90
+        etco2: 33
+        arterial_flow: 4.0
+        sweep: 2.1
+        fio2: 74
+        rso2: 54
+        act: 195
+        lactate: 2.5
+        glucose: 126
+      stabilization:
+        map: 84
+        systolic_bp: 120
+        diastolic_bp: 68
+        heart_rate: 82
+        etco2: 35
+        arterial_flow: 4.6
+        sweep: 1.8
+        fio2: 64
+        rso2: 66
+        act: 175
+        lactate: 1.9
+        glucose: 116
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OAUTH CONFIGURATION  —  ⚠️  SECURITY SENSITIVE
+# ═══════════════════════════════════════════════════════════════════════════════
+# OAuth2 credentials for EMR API authentication.
+# Note: `${ENV_VAR:default}` placeholder syntax is documentation-only here.
+# The current runtime reads literal YAML values and does not auto-resolve env placeholders.
+
+oauth:
+  # OAuth2 token endpoint
+  token_url: "http://your-emr-host:port/oauth2/default/token"
+  # Grant type (typically password for service-to-service)
+  grant_type: "password"
+  # OAuth2 client credentials (fill locally; never commit real secrets)
+  client_id: ""
+  client_secret: ""
+  # Service account credentials (fill locally; never commit real secrets)
+  username: ""
+  password: ""
+  # OAuth scope (permissions requested from EMR)
+  user_role: "users"
+  scope: "api:oemr user/Patient.read user/Patient.write user/patient.read user/patient.write user/Encounter.rs user/encounter.crus"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEVICES  —  EMR Device Mappings & Simulation Cases
+# ═══════════════════════════════════════════════════════════════════════════════
+# Defines simulated medical devices that report to the EMR. Each device:
+#   - Has a unique ID in the EMR system (emr_lookup_device_id)
+#   - Simulates one or more hemodynamic profiles
+#   - Can be configured to test different scenarios (normal, alert, critical)
+#
+# Fields:
+#   device_id              → Internal simulator device identifier
+#   mode                   → Simulator mode: "emr" (EMR API) or "grpc" (CDI gRPC)
+#   emr_lookup_device_id   → EMR system's device ID (for API lookups)
+#   device_type            → Device classification (e.g., hemodynamic, Terumo)
+#   patient_identifier     → Link to EMR patient record
+#   notes                  → Descriptive notes about the device/scenario
+#   enabled                → Boolean: true = active, false = skip device
+#   poll_interval          → Seconds between EMR status polls
+#   send_interval          → Seconds between telemetry transmissions to EMR
+#   case                   → Simulation scenario:
+#     • "within_range"     → Normal operational parameters (baseline)
+#     • "mixed"            → Mix of normal and out-of-range values
+#     • "low_limit"        → Parameters trending toward low alarm limits
+#     • "high_limit"       → Parameters trending toward high alarm limits
+#   profile                → Hemodynamic profile name (see profiles section above)
+# ─────────────────────────────────────────────────────────────────────────────
+devices:
+  - device_id: "Hemo-C1234567"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234567"
+    device_type: "hemodynamic"
+    patient_identifier: "1"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "within_range"              # Normal operation baseline
+    profile: "hemo_monitor_baseline"
+
+  - device_id: "Hemo-C1234568"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234568"
+    device_type: "Terumo"
+    patient_identifier: "2"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "mixed"                     # Some parameters out-of-range (test alerts)
+    profile: "hemo_cerebral_watch"
+
+  - device_id: "Hemo-C1234569"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234569"
+    device_type: "Terumo"
+    patient_identifier: "3"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "within_range"
+    profile: "hemo_perfusion_balance"
+
+  - device_id: "Hemo-C1234570"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234570"
+    device_type: "Terumo"
+    patient_identifier: "4"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "low_limit"                 # Low alarm condition (test critical alerts)
+    profile: "hemo_oxygen_delivery"
+
+  - device_id: "Hemo-C1234571"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234571"
+    device_type: "Terumo"
+    patient_identifier: "5"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "high_limit"                # High alarm condition
+    profile: "hemo_monitor_baseline"

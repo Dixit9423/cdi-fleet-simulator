@@ -1,0 +1,315 @@
+api_base_url: "http://192.168.29.116:8081/apis/default"
+
+parameters:
+  map:
+    display_name: "MAP"
+    unit: "mmHg"
+    category: "Arterial"
+    min: 60
+    max: 110
+  systolic_bp:
+    display_name: "Systolic BP"
+    unit: "mmHg"
+    category: "Arterial"
+    min: 90
+    max: 160
+  diastolic_bp:
+    display_name: "Diastolic BP"
+    unit: "mmHg"
+    category: "Arterial"
+    min: 50
+    max: 100
+  heart_rate:
+    display_name: "Heart Rate"
+    unit: "bpm"
+    category: "Other"
+    min: 50
+    max: 120
+  etco2:
+    display_name: "EtCO2"
+    unit: "mmHg"
+    category: "Venous"
+    min: 30
+    max: 50
+  arterial_flow:
+    display_name: "Arterial Flow"
+    unit: "L/min"
+    category: "Other"
+    min: 2.0
+    max: 6.0
+  sweep:
+    display_name: "Sweep"
+    unit: "L/min"
+    category: "Other"
+    min: 0.5
+    max: 3.0
+  fio2:
+    display_name: "FiO2"
+    unit: "%"
+    category: "Other"
+    min: 21
+    max: 100
+  rso2:
+    display_name: "Cerebral Oxygen Saturation"
+    unit: "%"
+    category: "Other"
+    min: 45
+    max: 80
+  act:
+    display_name: "ACT"
+    unit: "sec"
+    category: "Other"
+    min: 80
+    max: 240
+  lactate:
+    display_name: "Lactate"
+    unit: "mmol/L"
+    category: "Other"
+    min: 0.5
+    max: 5.0
+  glucose:
+    display_name: "Glucose"
+    unit: "mg/dL"
+    category: "Other"
+    min: 70
+    max: 180
+
+profiles:
+  hemo_monitor_baseline:
+    description: "High support bypass-like flow with tight oxygen delivery tracking"
+    phase_seconds: 45
+    volatility: 0.9
+    phase_sequence: [baseline, stress, recovery]
+    targets:
+      baseline:
+        map: 82
+        systolic_bp: 118
+        diastolic_bp: 68
+        heart_rate: 78
+        etco2: 36
+        arterial_flow: 4.8
+        sweep: 1.8
+        fio2: 70
+        rso2: 66
+        act: 180
+        lactate: 1.6
+        glucose: 120
+      stress:
+        map: 72
+        systolic_bp: 102
+        diastolic_bp: 58
+        heart_rate: 94
+        etco2: 31
+        arterial_flow: 4.2
+        sweep: 2.2
+        fio2: 78
+        rso2: 58
+        act: 210
+        lactate: 2.8
+        glucose: 145
+      recovery:
+        map: 88
+        systolic_bp: 126
+        diastolic_bp: 72
+        heart_rate: 82
+        etco2: 35
+        arterial_flow: 4.9
+        sweep: 1.7
+        fio2: 62
+        rso2: 68
+        act: 170
+        lactate: 1.9
+        glucose: 125
+
+  hemo_perfusion_balance:
+    description: "Balanced perfusion with arterial and venous focus"
+    phase_seconds: 50
+    volatility: 0.8
+    phase_sequence: [baseline, venous_shift, baseline]
+    targets:
+      baseline:
+        map: 84
+        systolic_bp: 122
+        diastolic_bp: 70
+        heart_rate: 76
+        etco2: 37
+        arterial_flow: 4.6
+        sweep: 1.6
+        fio2: 60
+        rso2: 67
+        act: 165
+        lactate: 1.4
+        glucose: 112
+      venous_shift:
+        map: 78
+        systolic_bp: 114
+        diastolic_bp: 64
+        heart_rate: 88
+        etco2: 41
+        arterial_flow: 4.3
+        sweep: 1.9
+        fio2: 65
+        rso2: 63
+        act: 185
+        lactate: 2.1
+        glucose: 124
+
+  hemo_oxygen_delivery:
+    description: "DO2-centric profile with flow and FiO2 optimization"
+    phase_seconds: 40
+    volatility: 1.0
+    phase_sequence: [baseline, low_delivery, correction]
+    targets:
+      baseline:
+        map: 80
+        systolic_bp: 116
+        diastolic_bp: 66
+        heart_rate: 80
+        etco2: 35
+        arterial_flow: 5.1
+        sweep: 2.0
+        fio2: 72
+        rso2: 65
+        act: 175
+        lactate: 1.8
+        glucose: 118
+      low_delivery:
+        map: 70
+        systolic_bp: 102
+        diastolic_bp: 56
+        heart_rate: 96
+        etco2: 32
+        arterial_flow: 3.9
+        sweep: 2.4
+        fio2: 84
+        rso2: 57
+        act: 205
+        lactate: 3.4
+        glucose: 138
+      correction:
+        map: 85
+        systolic_bp: 124
+        diastolic_bp: 72
+        heart_rate: 84
+        etco2: 36
+        arterial_flow: 5.3
+        sweep: 1.8
+        fio2: 66
+        rso2: 69
+        act: 180
+        lactate: 2.0
+        glucose: 122
+
+  hemo_cerebral_watch:
+    description: "Cerebral oxygenation sensitive profile"
+    phase_seconds: 35
+    volatility: 0.85
+    phase_sequence: [baseline, cerebral_drop, stabilization]
+    targets:
+      baseline:
+        map: 86
+        systolic_bp: 124
+        diastolic_bp: 72
+        heart_rate: 74
+        etco2: 37
+        arterial_flow: 4.7
+        sweep: 1.7
+        fio2: 58
+        rso2: 70
+        act: 160
+        lactate: 1.3
+        glucose: 108
+      cerebral_drop:
+        map: 76
+        systolic_bp: 110
+        diastolic_bp: 60
+        heart_rate: 90
+        etco2: 33
+        arterial_flow: 4.0
+        sweep: 2.1
+        fio2: 74
+        rso2: 54
+        act: 195
+        lactate: 2.5
+        glucose: 126
+      stabilization:
+        map: 84
+        systolic_bp: 120
+        diastolic_bp: 68
+        heart_rate: 82
+        etco2: 35
+        arterial_flow: 4.6
+        sweep: 1.8
+        fio2: 64
+        rso2: 66
+        act: 175
+        lactate: 1.9
+        glucose: 116
+
+devices:
+  - device_id: "Hemo-C1234567"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234567"
+    device_type: "hemodynamic"
+    patient_identifier: "1"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "within_range"
+    profile: "hemo_monitor_baseline"
+  - device_id: "Hemo-C1234568"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234568"
+    device_type: "Terumo"
+    patient_identifier: "2"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "mixed"
+    profile: "hemo_cerebral_watch"
+  - device_id: "Hemo-C1234569"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234569"
+    device_type: "Terumo"
+    patient_identifier: "3"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "within_range"
+    profile: "hemo_perfusion_balance"
+  - device_id: "Hemo-C1234570"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234570"
+    device_type: "Terumo"
+    patient_identifier: "4"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "low_limit"
+    profile: "hemo_oxygen_delivery"
+  - device_id: "Hemo-C1234571"
+    mode: "emr"
+    emr_lookup_device_id: "Hemo-C1234571"
+    device_type: "Terumo"
+    patient_identifier: "5"
+    notes: "Patient stable"
+    enabled: true
+    poll_interval: 5
+    send_interval: 1
+    case: "high_limit"
+    profile: "hemo_monitor_baseline"
+
+oauth:
+  # Do not commit real secrets. Fill values locally or through secret management.
+  token_url: "http://your-emr-host:port/oauth2/default/token"
+  grant_type: "password"
+  client_id: ""
+  client_secret: ""
+  username: ""
+  password: ""
+  user_role: "users"
+  scope: "api:oemr user/Patient.read user/Patient.write user/patient.read user/patient.write user/Encounter.rs user/encounter.crus"
