@@ -35,6 +35,7 @@ class DeviceState:
         self.lock = threading.Lock()
         self.device_id: str = device_cfg["device_id"]
         self.serial: str = device_cfg["serial"]
+        self.proto_version: str = str(device_cfg.get("proto_version", "v1")).lower()
         self.site: str = device_cfg["site"]
         self.sw_version: str = device_cfg["sw_version"]
         self.current_state: str = device_cfg["initial_state"]  # MEASURING|IDLE|STANDBY
@@ -57,6 +58,12 @@ class DeviceState:
         self.deferred_patient_id: str | None = None
         self.patient_cooldown_until_ms: int | None = None
         self.case_paused: bool = False
+        # Runtime cache for manager-pushed hemodynamics over V2.
+        self.hemo_profile_received: bool = False
+        self.hemo_profile_version: int = 0
+        self.hemo_param_catalog: dict[int, dict[str, Any]] = {}
+        self.hemo_last_tick_seq_no: int | None = None
+        self.hemo_last_tick_values: dict[int, str] = {}
         self.command_queue: Queue = Queue()
 
     def snapshot(self) -> dict:
@@ -70,6 +77,7 @@ class DeviceState:
             return {
                 "device_id": self.device_id,
                 "serial": self.serial,
+                "proto_version": self.proto_version,
                 "site": self.site,
                 "sw_version": self.sw_version,
                 "current_state": self.current_state,
@@ -89,6 +97,11 @@ class DeviceState:
                 "patient_cooldown_until_ms": self.patient_cooldown_until_ms,
                 "cooldown_remaining_sec": cooldown_remaining_sec,
                 "case_paused": self.case_paused,
+                "hemo_profile_received": self.hemo_profile_received,
+                "hemo_profile_version": self.hemo_profile_version,
+                "hemo_param_count": len(self.hemo_param_catalog),
+                "hemo_last_tick_seq_no": self.hemo_last_tick_seq_no,
+                "hemo_last_tick_value_count": len(self.hemo_last_tick_values),
                 "error": self.error,
             }
 

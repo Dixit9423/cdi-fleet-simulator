@@ -153,6 +153,7 @@ def main():
     print("  CDI Core Fleet Simulator")
     print("*" * 70)
     print(f"  gRPC target   : {srv['host']}:{srv['port']}")
+    print(f"  Proto service : {srv.get('proto_version', 'v1')}")
     print(f"  mTLS enabled  : {tls['enabled']}")
     if tls["enabled"]:
         print(f"  CA cert       : {tls.get('ca_cert_path', '—')}")

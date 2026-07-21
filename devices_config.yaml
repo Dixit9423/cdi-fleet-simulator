@@ -17,6 +17,9 @@
 server:
   host: "10.124.212.175" #"10.209.231.136" #"192.168.29.116" #"192.168.29.167" #10.124.204.36  #"10.124.204.10" #"192.168.29.167"
   port: 9090
+  # Service contract on the same gRPC host:port.
+  # Use v1 for the existing TelemetryService, or v2 for TelemetryServiceV2.
+  proto_version: v2
   # DataTick cadence controls (used by simulator thread scheduler)
   tick_interval_sec: 1.0
   tick_jitter_ms: 180
@@ -654,6 +657,163 @@ param_catalog:
         operating_high: "100",
       }
 
+  101:
+    name: "MAP"
+    unit: "mmHg"
+    source_personality: "Hemodynamics"
+    alarm_limit: { present: true, low: "60", high: "110" }
+    range:
+      {
+        present: true,
+        display_low: "60",
+        display_high: "110",
+        operating_low: "70",
+        operating_high: "100",
+      }
+  102:
+    name: "Pulse_Rate"
+    unit: "bpm"
+    source_personality: "Hemodynamics"
+    alarm_limit: { present: true, low: "50", high: "110" }
+    range:
+      {
+        present: true,
+        display_low: "50",
+        display_high: "110",
+        operating_low: "60",
+        operating_high: "100",
+      }
+  103:
+    name: "Systolic_BP"
+    unit: "mmHg"
+    source_personality: "Hemodynamics"
+    alarm_limit: { present: true, low: "90", high: "140" }
+    range:
+      {
+        present: true,
+        display_low: "90",
+        display_high: "140",
+        operating_low: "120",
+        operating_high: "120",
+      }
+  104:
+    name: "Diastolic_BP"
+    unit: "mmHg"
+    source_personality: "Hemodynamics"
+    alarm_limit: { present: true, low: "60", high: "90" }
+    range:
+      {
+        present: true,
+        display_low: "60",
+        display_high: "90",
+        operating_low: "80",
+        operating_high: "80",
+      }
+  105:
+    name: "ETCO2"
+    unit: "mmHg"
+    source_personality: "Hemodynamics"
+    alarm_limit: { present: true, low: "30", high: "50" }
+    range:
+      {
+        present: true,
+        display_low: "30",
+        display_high: "50",
+        operating_low: "35",
+        operating_high: "45",
+      }
+  106:
+    name: "Arterial_Flow"
+    unit: "L/min"
+    source_personality: "HLM / ECMO"
+    alarm_limit: { present: true, low: "2.5", high: "6.0" }
+    range:
+      {
+        present: true,
+        display_low: "2.5",
+        display_high: "6.0",
+        operating_low: "3",
+        operating_high: "5",
+      }
+  107:
+    name: "Sweep"
+    unit: "L/min"
+    source_personality: "HLM / ECMO"
+    alarm_limit: { present: true, low: "0.5", high: "5.0" }
+    range:
+      {
+        present: true,
+        display_low: "0.5",
+        display_high: "5.0",
+        operating_low: "1",
+        operating_high: "4",
+      }
+  108:
+    name: "FiO2"
+    unit: "%"
+    source_personality: "HLM / ECMO"
+    alarm_limit: { present: true, low: "30", high: "100" }
+    range:
+      {
+        present: true,
+        display_low: "30",
+        display_high: "100",
+        operating_low: "40",
+        operating_high: "100",
+      }
+  109:
+    name: "Cerebral_Oxygen_Saturation"
+    unit: "%"
+    source_personality: "Cerebral Oximeter"
+    alarm_limit: { present: true, low: "50", high: "85" }
+    range:
+      {
+        present: true,
+        display_low: "50",
+        display_high: "85",
+        operating_low: "60",
+        operating_high: "80",
+      }
+  110:
+    name: "ACT"
+    unit: "sec"
+    source_personality: "Lab Measurements"
+    alarm_limit: { present: true, low: "80", high: "300" }
+    range:
+      {
+        present: true,
+        display_low: "80",
+        display_high: "300",
+        operating_low: "100",
+        operating_high: "140",
+      }
+  111:
+    name: "Lactate"
+    unit: "mmol/L"
+    source_personality: "Lab Measurements"
+    alarm_limit: { present: true, low: "0.5", high: "4" }
+    range:
+      {
+        present: true,
+        display_low: "0.5",
+        display_high: "4",
+        operating_low: "0.5",
+        operating_high: "2.0",
+      }
+  112:
+    name: "Glucose"
+    unit: "mg/dL"
+    source_personality: "Lab Measurements"
+    alarm_limit: { present: true, low: "70", high: "180" }
+    range:
+      {
+        present: true,
+        display_low: "70",
+        display_high: "180",
+        operating_low: "70",
+        operating_high: "140",
+      }
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PROFILES  —  Named parameter-set presets
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -670,7 +830,8 @@ profiles:
     manual_hgb: 12.5
     manual_so2: 65
     flow_source: "Flow_Red"
-    param_ids: [76, 70, 74, 71, 75, 73, 9, 2, 4, 6, 10, 8, 11, 41, 42, 43]
+    param_ids:
+      [76, 70, 74, 71, 75, 73, 9, 2, 4, 6, 10, 8, 11, 41, 42, 43, 101, 106, 108]
     selected_param_ids: [76, 70, 74, 71, 75, 73, 9]
 
   arterial_venous:
@@ -678,28 +839,28 @@ profiles:
     manual_hgb: 13.0
     manual_so2: 70
     flow_source: "Flow_Red"
-    param_ids: [2, 4, 6, 9, 42, 43, 17, 19, 49, 50, 55]
+    param_ids: [2, 4, 6, 9, 42, 43, 17, 19, 49, 50, 55, 102, 103, 104]
 
   oxygen_delivery:
     do2i_threshold: 260
     manual_hgb: 11.0
     manual_so2: 60
     flow_source: "Flow_Blue"
-    param_ids: [42, 49, 50, 56, 70, 71, 72, 73, 74, 75]
+    param_ids: [42, 49, 50, 56, 70, 71, 72, 73, 74, 75, 105, 107, 111]
 
   cerebral_monitoring:
     do2i_threshold: 280
     manual_hgb: 12.0
     manual_so2: 65
     flow_source: "Flow_Red"
-    param_ids: [42, 50, 55, 60, 61, 71, 75]
+    param_ids: [42, 50, 55, 60, 61, 71, 75, 109, 110]
 
   minimal:
     do2i_threshold: 300
     manual_hgb: 14.0
     manual_so2: 72
     flow_source: "Flow_Red"
-    param_ids: [42, 50, 55, 71, 75]
+    param_ids: [42, 50, 55, 71, 75, 112]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DEVICES  —  6 simulated CDI Core devices

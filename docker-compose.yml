@@ -1,0 +1,36 @@
+services:
+  cdi-fleet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cdi-fleet-simulator:latest
+    container_name: cdi-fleet-sim
+    command: ["--insecure", "--control-port", "8090", "--no-persist"]
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+    volumes:
+      - ./devices_config.yaml:/app/devices_config.yaml:ro
+
+  emr-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cdi-fleet-simulator:latest
+    container_name: emr-sim
+    entrypoint: ["python", "run_emr_service.py"]
+    command:
+      [
+        "--config-dir",
+        "/app/simulator/config",
+        "--ui-port",
+        "3001",
+        "--auto-start",
+      ]
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    environment:
+      OPENEMR_ACCESS_TOKEN: "${OPENEMR_ACCESS_TOKEN:-}"
+    volumes:
+      - ./simulator/config:/app/simulator/config:ro

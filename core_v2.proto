@@ -1,0 +1,239 @@
+syntax = "proto3";
+
+package CdiTelemetryV2;
+
+option java_multiple_files = true;
+option java_package = "CdiTelemetryV2";
+option java_outer_classname = "TelemetryProtoV2";
+
+service TelemetryServiceV2 {
+  rpc TelemetrySession(stream DeviceToManager) returns (stream ManagerToDevice);
+}
+
+message DeviceToManager {
+  oneof payload {
+    DeviceAnnouncement device_announcement = 1;
+    CoreStateEvent core_state_event = 2;
+    ProfileMetadata profile_metadata = 3;
+    DataTick measurement_data_tick = 4;
+
+    DeviceAck device_ack = 5;
+    FileTransferInit file_transfer_init = 6;
+    FileTransferChunk file_transfer_chunk = 7;
+    FileTransferComplete file_transfer_complete = 8;
+    FileTransferCancel file_transfer_cancel = 9;
+    FileTransferAck file_transfer_ack = 10;
+    SessionCapabilities session_capabilities = 11;
+  }
+}
+
+message ManagerToDevice {
+  oneof payload {
+    StreamConfig stream_config = 1;
+    ManagerAck manager_ack = 2;
+    PatientBind patient_bind = 3;
+    PatientRelease patient_release = 4;
+
+    ProfileMetadata hemodynamics_profile_metadata = 5;
+    DataTick hemodynamics_data_tick = 6;
+
+    FileTransferInit file_transfer_init = 7;
+    FileTransferChunk file_transfer_chunk = 8;
+    FileTransferComplete file_transfer_complete = 9;
+    FileTransferCancel file_transfer_cancel = 10;
+    FileTransferAck file_transfer_ack = 11;
+    SessionCapabilities session_capabilities = 12;
+  }
+}
+
+message DeviceAnnouncement {
+  string device_id = 1;
+  string serial_number = 2;
+  string software_version = 3;
+  string protocol_version = 4;
+  uint64 connect_utc_ms = 5;
+  string connection_id = 6;
+}
+
+enum CoreState {
+  CORE_STATE_UNSPECIFIED = 0;
+  CORE_STATE_IDLE = 1;
+  CORE_STATE_STANDBY = 2;
+  CORE_STATE_MEASURING = 3;
+}
+
+message CoreStateEvent {
+  string device_id = 1;
+  string measurement_session_id = 2;
+  CoreState state = 3;
+  uint64 state_utc_ms = 4;
+  string reason = 5;
+  reserved 6;
+  reserved "case_id";
+}
+
+message PatientBind {
+  string patient_id = 1;
+  uint64 sent_utc_ms = 2;
+}
+
+message PatientRelease {
+  string patient_id = 1;
+  uint64 sent_utc_ms = 2;
+  string reason = 3;
+}
+
+message ProfileMetadata {
+  string device_id = 1;
+  string measurement_session_id = 2;
+  string patient_id = 3;
+  uint64 profile_version = 4;
+  uint64 sent_utc_ms = 5;
+  repeated ParamMetadata params = 6;
+  string connection_id = 7;
+  reserved 8;
+  reserved "case_id";
+}
+
+message ParamMetadata {
+  uint32 param_id = 1;
+  string param_name = 2;
+  string unit = 3;
+  AlarmLimit alarm_limit = 4;
+  ParamRange range = 5;
+  bool selected = 6;
+  string source_device_id = 7;
+  string source_device_personality = 8;
+}
+
+message AlarmLimit {
+  bool present = 1;
+  string low = 2;
+  string high = 3;
+}
+
+message ParamRange {
+  bool present = 1;
+  string display_low = 2;
+  string display_high = 3;
+  string operating_low = 4;
+  string operating_high = 5;
+}
+
+message DataTick {
+  string device_id = 1;
+  string measurement_session_id = 2;
+  uint64 seq_no = 3;
+  uint64 sample_utc_ms = 4;
+  CoreState state = 5;
+  repeated ParamValue values = 6;
+  reserved 7;
+  reserved "case_id";
+}
+
+message ParamValue {
+  uint32 param_id = 1;
+  string value = 2;
+  string source_device_id = 3;
+}
+
+message StreamConfig {
+  uint64 config_version = 1;
+  uint32 sampling_interval_ms = 2;
+  bool include_alarm_limit_in_metadata = 3;
+  bool include_range_in_metadata = 4;
+  bool include_missing_values = 5;
+  repeated uint32 selected_param_ids = 6;
+}
+
+message ManagerAck {
+  uint64 ref_seq = 1;
+  string message = 2;
+  string ack_for_message_type = 3;
+}
+
+message DeviceAck {
+  uint64 ref_seq = 1;
+  string message = 2;
+  string ack_for_message_type = 3;
+}
+
+message SessionCapabilities {
+  string device_id = 1;
+  bool supports_manager_hemodynamics_push = 2;
+  bool supports_bidirectional_file_transfer = 3;
+  uint32 preferred_max_chunk_size_bytes = 4;
+  repeated FileType supported_file_types = 5;
+  uint64 sent_utc_ms = 6;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_PROFILE_PACKAGE = 1;
+  FILE_TYPE_CUSTOM_MATH_PACKAGE = 2;
+  FILE_TYPE_DEVICE_BINARY_PACKAGE = 3;
+  FILE_TYPE_CASE_DATA_PACKAGE = 4;
+}
+
+enum FileCompression {
+  FILE_COMPRESSION_UNSPECIFIED = 0;
+  FILE_COMPRESSION_NONE = 1;
+  FILE_COMPRESSION_GZIP = 2;
+}
+
+enum FileTransferState {
+  FILE_TRANSFER_STATE_UNSPECIFIED = 0;
+  FILE_TRANSFER_STATE_ACCEPTED = 1;
+  FILE_TRANSFER_STATE_IN_PROGRESS = 2;
+  FILE_TRANSFER_STATE_COMPLETED = 3;
+  FILE_TRANSFER_STATE_REJECTED = 4;
+  FILE_TRANSFER_STATE_FAILED = 5;
+  FILE_TRANSFER_STATE_CANCELED = 6;
+}
+
+message FileTransferInit {
+  string transfer_id = 1;
+  string file_name = 2;
+  FileType file_type = 3;
+  uint64 file_size_bytes = 4;
+  uint32 chunk_size_bytes = 5;
+  string content_type = 6;
+  string sha256_hex = 7;
+  FileCompression compression = 8;
+  string sender_device_id = 9;
+  string receiver_device_id = 10;
+  uint64 sent_utc_ms = 11;
+  map<string, string> metadata = 12;
+}
+
+message FileTransferChunk {
+  string transfer_id = 1;
+  uint32 chunk_index = 2;
+  uint64 byte_offset = 3;
+  bytes data = 4;
+  bool is_last_chunk = 5;
+  uint64 sent_utc_ms = 6;
+}
+
+message FileTransferComplete {
+  string transfer_id = 1;
+  uint32 total_chunks = 2;
+  uint64 total_bytes = 3;
+  string sha256_hex = 4;
+  uint64 sent_utc_ms = 5;
+}
+
+message FileTransferCancel {
+  string transfer_id = 1;
+  string reason = 2;
+  uint64 sent_utc_ms = 3;
+}
+
+message FileTransferAck {
+  string transfer_id = 1;
+  FileTransferState state = 2;
+  uint32 acked_chunk_index = 3;
+  uint32 next_expected_chunk_index = 4;
+  string message = 5;
+  uint64 sent_utc_ms = 6;
+}
