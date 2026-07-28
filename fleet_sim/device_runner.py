@@ -80,6 +80,7 @@ class DeviceRunner(threading.Thread):
         # Background response reader state
         self._stream_alive = True
         self._tick_interval_sec = float(self.server_cfg.get("tick_interval_sec", 1.0))
+        self._verbose_tick_logs = bool(self.server_cfg.get("verbose_tick_logs", False))
         raw_jitter_ms = int(self.server_cfg.get("tick_jitter_ms", 180))
         max_safe_jitter_ms = max(0, int(self._tick_interval_sec * 400))
         jitter_ms = max(0, min(raw_jitter_ms, max_safe_jitter_ms))
@@ -150,6 +151,7 @@ class DeviceRunner(threading.Thread):
                 patient_id = resp.patient_bind.patient_id
                 source = _classify_patient_source(patient_id)
                 with self.ds.lock:
+                    self.ds.awaiting_backend_patient_bind = False
                     cooldown_until = self.ds.patient_cooldown_until_ms
                     cooldown_active = bool(cooldown_until and cooldown_until > _now_ms())
                     if cooldown_active:
@@ -157,6 +159,7 @@ class DeviceRunner(threading.Thread):
                         ready_in_sec = int((cooldown_until_ms - _now_ms() + 999) / 1000)
                         self.ds.deferred_patient_id = patient_id
                         self.ds.pending_patient_source = source
+                        self.ds.next_backend_patient_sync_until_ms = None
                         self._log(
                             f"<< PatientBind deferred for cooldown (patient={patient_id}, "
                             f"ready_in={ready_in_sec}s)"
@@ -165,6 +168,7 @@ class DeviceRunner(threading.Thread):
                         self.ds.pending_patient_id = patient_id
                         self.ds.pending_patient_source = source
                         self.ds.deferred_patient_id = None
+                        self.ds.next_backend_patient_sync_until_ms = None
                         self._log(f"<< PatientBind pending decision (patient={patient_id}, source={source or 'unknown'})")
             elif resp.HasField("patient_release"):
                 with self.ds.lock:
@@ -174,34 +178,64 @@ class DeviceRunner(threading.Thread):
                     self.ds.pending_patient_id = None
                     self.ds.pending_patient_source = None
                     self.ds.deferred_patient_id = None
+                    self.ds.awaiting_backend_patient_bind = True
+                    self.ds.next_backend_patient_sync_until_ms = _now_ms() + 60000
                     self.ds.patient_cooldown_until_ms = _now_ms() + 60000
                     self.ds.current_state = "IDLE"
                     self.ds.measurement_session_id = None
                     self.ds.seq_no = DEFAULT_TICK_SEQ_NO
                     self.ds.tick_index = 0
+                self._clear_hemodynamics_state(keep_inbound_metadata=True)
                 self._log(f"<< PatientRelease (patient={released_patient})")
             elif self._is_v2 and resp.HasField("hemodynamics_profile_metadata"):
                 profile = resp.hemodynamics_profile_metadata
                 hemo_params: dict[int, dict] = {}
                 for param in profile.params:
-                    hemo_params[int(param.param_id)] = {
-                        "name": param.param_name,
-                        "unit": param.unit,
-                        "source_personality": param.source_device_personality,
+                    pid = int(param.param_id)
+                    cfg_meta = self.catalog.get(pid, {})
+
+                    incoming_alarm = {
+                        "present": bool(param.alarm_limit.present),
+                        "low": str(param.alarm_limit.low),
+                        "high": str(param.alarm_limit.high),
+                    }
+                    incoming_range = {
+                        "present": bool(param.range.present),
+                        "display_low": str(param.range.display_low),
+                        "display_high": str(param.range.display_high),
+                        "operating_low": str(param.range.operating_low),
+                        "operating_high": str(param.range.operating_high),
+                    }
+
+                    cfg_alarm = cfg_meta.get("alarm_limit", {})
+                    cfg_range = cfg_meta.get("range", {})
+
+                    alarm_meta = incoming_alarm
+                    if cfg_alarm.get("present"):
+                        alarm_meta = {
+                            "present": True,
+                            "low": str(cfg_alarm.get("low", "")),
+                            "high": str(cfg_alarm.get("high", "")),
+                        }
+
+                    range_meta = incoming_range
+                    if cfg_range.get("present"):
+                        range_meta = {
+                            "present": True,
+                            "display_low": str(cfg_range.get("display_low", "")),
+                            "display_high": str(cfg_range.get("display_high", "")),
+                            "operating_low": str(cfg_range.get("operating_low", "")),
+                            "operating_high": str(cfg_range.get("operating_high", "")),
+                        }
+
+                    hemo_params[pid] = {
+                        "name": cfg_meta.get("name") or param.param_name,
+                        "unit": cfg_meta.get("unit") or param.unit,
+                        "source_personality": cfg_meta.get("source_personality") or param.source_device_personality,
                         "source_device_id": param.source_device_id,
                         "selected": bool(param.selected),
-                        "alarm_limit": {
-                            "present": bool(param.alarm_limit.present),
-                            "low": str(param.alarm_limit.low),
-                            "high": str(param.alarm_limit.high),
-                        },
-                        "range": {
-                            "present": bool(param.range.present),
-                            "display_low": str(param.range.display_low),
-                            "display_high": str(param.range.display_high),
-                            "operating_low": str(param.range.operating_low),
-                            "operating_high": str(param.range.operating_high),
-                        },
+                        "alarm_limit": alarm_meta,
+                        "range": range_meta,
                     }
 
                 with self.ds.lock:
@@ -211,7 +245,7 @@ class DeviceRunner(threading.Thread):
 
                 params_preview = ", ".join(
                     f"{pid}:{meta.get('name', '')}"
-                    for pid, meta in list(hemo_params.items())[:8]
+                    for pid, meta in list(hemo_params.items())[:12]
                 )
                 self._log(
                     "<< HemodynamicsProfileMetadata "
@@ -240,10 +274,16 @@ class DeviceRunner(threading.Thread):
                 with self.ds.lock:
                     self.ds.hemo_last_tick_seq_no = int(tick.seq_no)
                     self.ds.hemo_last_tick_values = tick_values
-                values_preview = ", ".join(
-                    f"{value.param_id}={value.value}"
-                    for value in tick.values[:8]
-                )
+                if self._verbose_tick_logs:
+                    values_preview = ", ".join(
+                        f"{value.param_id}={value.value}"
+                        for value in tick.values
+                    )
+                else:
+                    values_preview = ", ".join(
+                        f"{value.param_id}={value.value}"
+                        for value in tick.values[:8]
+                    )
                 self._log(
                     "<< HemodynamicsDataTick "
                     f"device={tick.device_id or self.ds.device_id} "
@@ -267,28 +307,91 @@ class DeviceRunner(threading.Thread):
 
     def _activate_deferred_patient_if_ready(self):
         """Move deferred patient to pending once cooldown expires."""
+        log_reopened = False
+        pending_patient: str | None = None
         with self.ds.lock:
+            if self.ds.patient_id or self.ds.pending_patient_id:
+                self.ds.awaiting_backend_patient_bind = False
+                return
+
             cooldown_until = self.ds.patient_cooldown_until_ms
             if cooldown_until and cooldown_until > _now_ms():
                 return
             if cooldown_until and cooldown_until <= _now_ms():
                 self.ds.patient_cooldown_until_ms = None
+
             deferred = self.ds.deferred_patient_id
             if not deferred:
+                if not self.ds.awaiting_backend_patient_bind:
+                    self.ds.awaiting_backend_patient_bind = True
+                    log_reopened = True
                 return
+
             self.ds.pending_patient_id = deferred
             self.ds.pending_patient_source = _classify_patient_source(deferred)
             self.ds.deferred_patient_id = None
-        self._log(f"   PatientBind now pending decision (patient={deferred})")
+            self.ds.awaiting_backend_patient_bind = False
+            self.ds.next_backend_patient_sync_until_ms = None
+            pending_patient = deferred
+
+        if log_reopened:
+            self._log("   Backend patient bind window reopened (awaiting next PatientBind)")
+        if pending_patient:
+            self._log(f"   PatientBind now pending decision (patient={pending_patient})")
+
+    def _maybe_request_backend_patient_bind(self) -> None:
+        """Periodically re-play IDLE to ask the backend for the next patient binding."""
+        now_ms = _now_ms()
+        with self.ds.lock:
+            if self.ds.patient_id or self.ds.pending_patient_id:
+                self.ds.awaiting_backend_patient_bind = False
+                self.ds.next_backend_patient_sync_until_ms = None
+                return
+
+            if not self.ds.awaiting_backend_patient_bind:
+                return
+
+            next_sync_until = self.ds.next_backend_patient_sync_until_ms
+            if next_sync_until and next_sync_until > now_ms:
+                return
+
+            self.ds.next_backend_patient_sync_until_ms = now_ms + 60000
+
+        self._log("   Requesting backend patient bind refresh")
+        if not self._replay_current_state("PatientBindRequest"):
+            self._log("   Backend patient bind refresh failed; will retry on next interval")
 
     def _has_accepted_patient(self) -> bool:
         """True when manager-bound patient was accepted and moved to patient_id."""
         with self.ds.lock:
             return bool(self.ds.patient_id)
 
+    def _clear_hemodynamics_state(self, keep_inbound_metadata: bool = False) -> None:
+        """Clear cached hemodynamics state.
+        When keep_inbound_metadata=True, retain inbound metadata catalog for UI continuity
+        across StopCase/PatientRelease on the same device."""
+        with self.ds.lock:
+            if keep_inbound_metadata:
+                self.ds.hemo_profile_received = bool(self.ds.hemo_param_catalog)
+            else:
+                self.ds.hemo_profile_received = False
+                self.ds.hemo_profile_version = 0
+                self.ds.hemo_param_catalog = {}
+            self.ds.hemo_last_tick_seq_no = None
+            self.ds.hemo_last_tick_values = {}
+            self.ds.hemo_outbound_profile_version = 0
+            self.ds.hemo_outbound_param_catalog = {}
+            self.ds.hemo_outbound_last_tick_seq_no = None
+            self.ds.hemo_outbound_last_tick_values = {}
+
     def _send_and_wait_ack(self, msg, label: str, timeout: float = 5.0, expected_ack_type: str | None = None) -> bool:
         """Send a message and wait for the background reader to receive a response.
         Used for critical messages: Announcement, ProfileMetadata, CoreStateEvent."""
+        def _normalize_ack_type(value: str | None) -> str:
+            if not value:
+                return ""
+            return "".join(ch for ch in value.lower() if ch.isalnum())
+
         if not self._stream_alive:
             self._log(f"ERROR: Stream dead, cannot send: {label}")
             return False
@@ -308,14 +411,15 @@ class DeviceRunner(threading.Thread):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self._log(f"WARNING: No server response within {timeout}s for: {label}")
-                return True
+                return False
             try:
                 ack_for, _, _ = self._ack_q.get(timeout=min(0.25, remaining))
             except qmod.Empty:
                 continue
 
-            if expected_ack_type and ack_for and ack_for != expected_ack_type:
-                continue
+            if expected_ack_type and ack_for:
+                if _normalize_ack_type(ack_for) != _normalize_ack_type(expected_ack_type):
+                    continue
             return True
 
         return self._stream_alive
@@ -360,15 +464,9 @@ class DeviceRunner(threading.Thread):
         metadata_param_ids = list(profile.get("metadata_param_ids", profile.get("param_ids", [])))
         selected_param_ids = set(profile.get("selected_param_ids", profile.get("param_ids", [])))
 
-        # For V2 sessions, merge manager-pushed hemodynamics metadata into
-        # outgoing ProfileMetadata so the server receives aligned EMR params.
-        if self._is_v2:
-            with self.ds.lock:
-                hemo_param_ids = sorted(self.ds.hemo_param_catalog.keys())
-            for pid in hemo_param_ids:
-                if pid not in metadata_param_ids:
-                    metadata_param_ids.append(pid)
-                selected_param_ids.add(pid)
+        # For V2 sessions, keep configured profile param ids as the source of
+        # truth. Manager-pushed hemodynamics metadata is only used later as a
+        # field-level fallback when a configured param is missing in catalog.
         now_ms = _now_ms()
 
         with self.ds.lock:
@@ -400,6 +498,7 @@ class DeviceRunner(threading.Thread):
         if hasattr(pm, "flow_source"):
             pm.flow_source = profile.get("flow_source", "Flow_Red")
 
+        outbound_hemo_cache: dict[int, dict] = {}
         for pid in metadata_param_ids:
             cat = self.catalog.get(pid)
             if not cat and self._is_v2:
@@ -441,6 +540,30 @@ class DeviceRunner(threading.Thread):
                 p.range.display_high = str(rng.get("display_high", ""))
                 p.range.operating_low = str(rng.get("operating_low", ""))
                 p.range.operating_high = str(rng.get("operating_high", ""))
+
+            outbound_hemo_cache[pid] = {
+                "name": p.param_name,
+                "unit": p.unit,
+                "source_personality": p.source_device_personality,
+                "source_device_id": p.source_device_id,
+                "selected": bool(p.selected),
+                "alarm_limit": {
+                    "present": bool(p.alarm_limit.present),
+                    "low": str(p.alarm_limit.low),
+                    "high": str(p.alarm_limit.high),
+                },
+                "range": {
+                    "present": bool(p.range.present),
+                    "display_low": str(p.range.display_low),
+                    "display_high": str(p.range.display_high),
+                    "operating_low": str(p.range.operating_low),
+                    "operating_high": str(p.range.operating_high),
+                },
+            }
+
+        with self.ds.lock:
+            self.ds.hemo_outbound_param_catalog = outbound_hemo_cache
+            self.ds.hemo_outbound_profile_version = pv
 
         return self._pb2.DeviceToManager(profile_metadata=pm)
 
@@ -506,6 +629,11 @@ class DeviceRunner(threading.Thread):
         with self.ds.lock:
             self.ds.total_ticks_sent += 1
             self.ds.last_tick_utc_ms = now_ms
+            self.ds.hemo_outbound_last_tick_seq_no = int(seq)
+            self.ds.hemo_outbound_last_tick_values = {
+                int(value.param_id): str(value.value)
+                for value in dt.values
+            }
 
         return self._pb2.DeviceToManager(measurement_data_tick=dt)
 
@@ -578,6 +706,7 @@ class DeviceRunner(threading.Thread):
             self.ds.tick_index = 0
             self.ds.measurement_session_id = None
             self.ds.case_paused = False
+        self._clear_hemodynamics_state(keep_inbound_metadata=True)
         self._log(f"   Transitioned to IDLE (reason: {reason})")
         return ok
 
@@ -594,7 +723,7 @@ class DeviceRunner(threading.Thread):
                 self._log("   Waiting for PatientBind acceptance before ProfileMetadata (patient_id not accepted yet)")
                 return False
             # IDLE → STANDBY: must send ProfileMetadata first
-            pname = profile_name or "minimal"
+            pname = profile_name or self.ds.profile_name or "minimal"
             self._log(f"   IDLE → STANDBY: sending ProfileMetadata({pname}) first")
             pm_msg = self._build_profile_metadata(pname, force_new_session=True)
             param_count = len(pm_msg.profile_metadata.params)
@@ -662,7 +791,11 @@ class DeviceRunner(threading.Thread):
                 return False
             profile = cmd.get("profile")
             self._log(f"    → {current} → STANDBY (profile={profile})")
-            default_reason = "StandByCase" if current == "MEASURING" else "SetProfile"
+            if current == "MEASURING":
+                default_reason = "StandByCase"
+            else:
+                emr_enabled = bool(cmd.get("emr_enabled"))
+                default_reason = "SetProfile, EMR ON" if emr_enabled else "SetProfile, EMR OFF"
             return self._transition_to_standby(cmd.get("reason") or default_reason, profile_name=profile)
 
         elif cmd_type == "idle":
@@ -678,6 +811,8 @@ class DeviceRunner(threading.Thread):
                 self.ds.patient_source = _classify_patient_source(self.ds.patient_id)
                 self.ds.pending_patient_id = None
                 self.ds.pending_patient_source = None
+                self.ds.awaiting_backend_patient_bind = False
+                self.ds.next_backend_patient_sync_until_ms = None
             self._log(f"    → Patient bound: {self.ds.patient_id}")
             return True
 
@@ -687,6 +822,8 @@ class DeviceRunner(threading.Thread):
                 self.ds.patient_source = None
                 self.ds.pending_patient_id = None
                 self.ds.pending_patient_source = None
+                self.ds.awaiting_backend_patient_bind = True
+                self.ds.next_backend_patient_sync_until_ms = _now_ms() + 60000
             self._log(f"    → Patient released")
             return True
 
@@ -705,6 +842,8 @@ class DeviceRunner(threading.Thread):
                     self.ds.patient_source = self.ds.pending_patient_source or _classify_patient_source(pending)
                     self.ds.pending_patient_id = None
                     self.ds.pending_patient_source = None
+                    self.ds.awaiting_backend_patient_bind = False
+                    self.ds.next_backend_patient_sync_until_ms = None
                 msg = self._build_state_event(current_state, "Patient ID Accepted")
                 return self._send_and_wait_ack(
                     msg,
@@ -721,6 +860,8 @@ class DeviceRunner(threading.Thread):
                     self.ds.pending_patient_id = None
                     self.ds.pending_patient_source = None
                     self.ds.deferred_patient_id = None
+                    self.ds.awaiting_backend_patient_bind = True
+                    self.ds.next_backend_patient_sync_until_ms = _now_ms() + 60000
                     self.ds.patient_cooldown_until_ms = _now_ms() + 60000
                 reject_msg = self._build_state_event("IDLE", "Patient ID Rejected")
                 rejected_ok = self._send_and_wait_ack(
@@ -772,6 +913,7 @@ class DeviceRunner(threading.Thread):
 
             while not self.stop_event.is_set():
                 self._activate_deferred_patient_if_ready()
+                self._maybe_request_backend_patient_bind()
 
                 # If server stream dropped, keep thread alive and reconnect.
                 if not self._stream_alive:
@@ -812,10 +954,16 @@ class DeviceRunner(threading.Thread):
                     now = time.monotonic()
                     if now >= next_tick_due:
                         msg = self._build_data_tick()
-                        vals_str = ", ".join(
-                            f"{v.param_id}={v.value}"
-                            for v in msg.measurement_data_tick.values[:4]
-                        )
+                        if self._verbose_tick_logs:
+                            vals_str = ", ".join(
+                                f"{v.param_id}={v.value}"
+                                for v in msg.measurement_data_tick.values
+                            )
+                        else:
+                            vals_str = ", ".join(
+                                f"{v.param_id}={v.value}"
+                                for v in msg.measurement_data_tick.values[:4]
+                            )
                         ok = self._send_no_wait(
                             msg,
                             f"DataTick(seq={msg.measurement_data_tick.seq_no}, [{vals_str}])"

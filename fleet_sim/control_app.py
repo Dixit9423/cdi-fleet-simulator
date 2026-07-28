@@ -185,6 +185,7 @@ class StateChangeRequest(BaseModel):
     profile: Optional[str] = None
     patient_id: Optional[str] = None
     reason: Optional[str] = None
+    emr_enabled: Optional[bool] = None
 
 
 @app.post("/api/devices/{device_id}/state")
@@ -219,11 +220,15 @@ def change_state(device_id: str, req: StateChangeRequest):
     elif state == "STANDBY":
         if current not in ("IDLE", "MEASURING"):
             raise HTTPException(400, f"Cannot go to STANDBY from {current}")
-        default_reason = "StandByCase" if current == "MEASURING" else "SetProfile, EMR Off"
+        if current == "MEASURING":
+            default_reason = "StandByCase"
+        else:
+            emr_enabled = bool(req.emr_enabled)
+            default_reason = "SetProfile, EMR ON" if emr_enabled else "SetProfile, EMR OFF"
         cmd = {
             "type": "standby",
             "reason": req.reason or default_reason,
-            "profile": req.profile or "minimal",
+            "profile": req.profile or ds.profile_name or "minimal",
         }
     else:
         raise HTTPException(400, f"Invalid state: {state}")
@@ -246,9 +251,12 @@ def manage_patient(device_id: str, req: PatientRequest):
         raise HTTPException(404, f"Device {device_id} not found")
 
     if req.action == "bind":
-        if not req.patient_id:
-            raise HTTPException(400, "patient_id required for bind")
-        cmd = {"type": "bind_patient", "patient_id": req.patient_id}
+        backend_patient_id = ds.pending_patient_id or ds.patient_id
+        if not backend_patient_id:
+            raise HTTPException(409, "No backend-provided patient id available to bind")
+        if req.patient_id and str(req.patient_id) != str(backend_patient_id):
+            raise HTTPException(400, "patient_id must match the backend-provided patient id")
+        cmd = {"type": "bind_patient", "patient_id": backend_patient_id}
     elif req.action == "release":
         cmd = {"type": "release_patient"}
     else:

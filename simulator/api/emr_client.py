@@ -34,7 +34,7 @@ class EMRClient:
         self.dry_run = dry_run
         self.oauth_config = oauth_config
         self.log = logging.getLogger("simulator.emr_client")
-        self._dummy_counter = itertools.count(1000)
+        self._dummy_counter = itertools.count(1)
         self._token_expires_at: float = 0.0
         self._dry_patients_by_identifier: dict[str, str] = {}
         self._dry_assignments_by_device: dict[str, str] = {}
@@ -131,7 +131,7 @@ class EMRClient:
                 pid = key
                 self._dry_patients_by_identifier[key] = pid
             else:
-                pid = str(next(self._dummy_counter))
+                pid = f"PAT-{next(self._dummy_counter)}"
                 self._dry_patients_by_identifier[key] = pid
             return {
                 "patient_id": pid,

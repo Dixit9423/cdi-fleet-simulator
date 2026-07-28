@@ -40,6 +40,7 @@ def load_config(config_path: str) -> dict:
     srv = cfg.get("server", {})
     srv.setdefault("host", "localhost")
     srv.setdefault("port", 5555)
+    srv.setdefault("verbose_tick_logs", False)
     srv["proto_version"] = _normalize_proto_version(srv.get("proto_version", "v1"))
     tls = srv.get("tls", {})
     tls.setdefault("enabled", False)

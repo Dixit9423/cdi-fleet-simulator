@@ -132,6 +132,11 @@ def main():
         help="Start a standalone EMR-only control panel on a separate port",
     )
     parser.add_argument(
+        "--verbose-tick-logs",
+        action="store_true",
+        help="Print full outbound/inbound tick param lists instead of preview slices",
+    )
+    parser.add_argument(
         "--emr-ui-port",
         type=int,
         default=3001,
@@ -141,6 +146,9 @@ def main():
 
     # ── Load config ──────────────────────────────────────────────────────
     config = load_config(args.config)
+
+    if args.verbose_tick_logs:
+        config["server"]["verbose_tick_logs"] = True
 
     if args.insecure:
         config["server"]["tls"]["enabled"] = False
@@ -160,6 +168,7 @@ def main():
         print(f"  Client cert   : {tls.get('client_cert_path', '—')}")
     print(f"  Devices       : {len(config['devices'])}")
     print(f"  Profiles      : {', '.join(config['profiles'].keys())}")
+    print(f"  Tick logging  : {'full' if config['server'].get('verbose_tick_logs') else 'preview'}")
     print(f"  Control panel : {'disabled' if args.no_control else f'http://localhost:{args.control_port}'}")
     print(f"  Persistence   : {'disabled' if args.no_persist else args.state_file}")
     print("*" * 70)
