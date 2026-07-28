@@ -42,6 +42,10 @@ class DeviceState:
         self.patient_id: str | None = device_cfg.get("patient_id")
         self.patient_source: str | None = _classify_patient_source(self.patient_id)
         self.profile_name: str | None = device_cfg.get("profile")
+        self.emr_enabled: bool = bool(device_cfg.get("emr_enabled", False))
+        self.remove_emr_params_from_profile_metadata: bool = bool(
+            device_cfg.get("remove_emr_params_from_profile_metadata", False)
+        )
         self.probes: dict = device_cfg.get("probes", {})
         self.tick_data: dict[int, list[str]] = device_cfg.get("tick_data", {})
         self.tick_index: int = 0
@@ -128,6 +132,8 @@ class DeviceState:
                 "current_state": self.current_state,
                 "patient_id": self.patient_id,
                 "profile_name": self.profile_name,
+                "emr_enabled": self.emr_enabled,
+                "remove_emr_params_from_profile_metadata": self.remove_emr_params_from_profile_metadata,
                 "connected": self.connected,
                 "connection_id": self.connection_id,
                 "measurement_session_id": self.measurement_session_id,
@@ -242,6 +248,8 @@ class StateStore:
                     "patient_id": dev.patient_id,
                     "patient_source": dev.patient_source,
                     "profile_name": dev.profile_name,
+                    "emr_enabled": dev.emr_enabled,
+                    "remove_emr_params_from_profile_metadata": dev.remove_emr_params_from_profile_metadata,
                     "tick_data": dev.tick_data,
                     "awaiting_backend_patient_bind": dev.awaiting_backend_patient_bind,
                     "next_backend_patient_sync_until_ms": dev.next_backend_patient_sync_until_ms,
@@ -271,6 +279,13 @@ class StateStore:
                 dev.patient_id = state.get("patient_id", dev.patient_id)
                 dev.patient_source = state.get("patient_source", dev.patient_source)
                 dev.profile_name = state.get("profile_name", dev.profile_name)
+                dev.emr_enabled = bool(state.get("emr_enabled", dev.emr_enabled))
+                dev.remove_emr_params_from_profile_metadata = bool(
+                    state.get(
+                        "remove_emr_params_from_profile_metadata",
+                        dev.remove_emr_params_from_profile_metadata,
+                    )
+                )
                 dev.awaiting_backend_patient_bind = bool(
                     state.get("awaiting_backend_patient_bind", dev.awaiting_backend_patient_bind)
                 )

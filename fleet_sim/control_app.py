@@ -186,6 +186,7 @@ class StateChangeRequest(BaseModel):
     patient_id: Optional[str] = None
     reason: Optional[str] = None
     emr_enabled: Optional[bool] = None
+    remove_emr_params: Optional[bool] = None
 
 
 @app.post("/api/devices/{device_id}/state")
@@ -222,13 +223,21 @@ def change_state(device_id: str, req: StateChangeRequest):
             raise HTTPException(400, f"Cannot go to STANDBY from {current}")
         if current == "MEASURING":
             default_reason = "StandByCase"
+            emr_enabled = ds.emr_enabled
+            remove_emr_params = ds.remove_emr_params_from_profile_metadata
         else:
             emr_enabled = bool(req.emr_enabled)
+            remove_emr_params = bool(req.remove_emr_params) if not emr_enabled else False
             default_reason = "SetProfile, EMR ON" if emr_enabled else "SetProfile, EMR OFF"
+            with ds.lock:
+                ds.emr_enabled = emr_enabled
+                ds.remove_emr_params_from_profile_metadata = remove_emr_params
         cmd = {
             "type": "standby",
             "reason": req.reason or default_reason,
             "profile": req.profile or ds.profile_name or "minimal",
+            "emr_enabled": emr_enabled,
+            "remove_emr_params": remove_emr_params,
         }
     else:
         raise HTTPException(400, f"Invalid state: {state}")

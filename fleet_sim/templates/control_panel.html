@@ -455,7 +455,8 @@
           <span style="color: var(--yellow)">IDLE</span>
         </div>
         <span class="refresh-info"
-          >Auto-refresh: 5s | <span id="lastUpdate">—</span></span
+          >Live refresh: <span id="refreshInterval">1s</span> |
+          <span id="lastUpdate">—</span></span
         >
       </div>
     </header>
@@ -479,11 +480,13 @@
 
       let profiles = {};
       let emrToggleState = {};
+      let removeEmrParamsState = {};
       let lastFleetData = null; // Cache to prevent unnecessary DOM updates
       let refreshErrors = 0; // Track consecutive errors to prevent spam
       let maxRefreshErrors = 3; // Max errors before backing off
       let refreshBackoffMs = 3000; // Start with 3s backoff
       let hemoExpandState = {}; // Persist details open/closed per device+section
+      const LIVE_REFRESH_MS = 1000;
 
       function hemoKey(deviceId, kind) {
         return `${deviceId}::${kind}`;
@@ -548,6 +551,20 @@
 
       function setEmrToggle(deviceId, enabled) {
         emrToggleState[deviceId] = !!enabled;
+        const removeToggle = document.getElementById(`remove_emr_${deviceId}`);
+        if (enabled) {
+          removeEmrParamsState[deviceId] = false;
+          if (removeToggle) removeToggle.checked = false;
+        }
+        if (removeToggle) removeToggle.disabled = !!enabled;
+      }
+
+      function removeEmrParamsFor(deviceId) {
+        return removeEmrParamsState[deviceId] === true;
+      }
+
+      function setRemoveEmrParams(deviceId, enabled) {
+        removeEmrParamsState[deviceId] = !!enabled;
       }
 
       function formatAlarm(meta) {
@@ -585,21 +602,35 @@
       function renderHemoSection(d) {
         const inboundParams = d.hemo_inbound_params || d.hemo_params || [];
         const outboundParams = d.hemo_outbound_params || [];
+        const emrEnabled = d.emr_enabled === true;
+        const removeEmrParams =
+          d.remove_emr_params_from_profile_metadata === true;
         const inboundWithValue = inboundParams.filter(
           (p) => p.latest_value != null,
         ).length;
         const outboundWithValue = outboundParams.filter(
           (p) => p.latest_value != null,
         ).length;
+        const inboundHasSignal =
+          inboundParams.length > 0 || inboundWithValue > 0;
 
-        const inboundStatus = d.hemo_inbound_profile_received
-          ? "Metadata received"
-          : inboundParams.length
-            ? "Cached metadata"
-            : "Waiting for metadata";
+        const inboundStatus =
+          d.hemo_inbound_profile_received && inboundHasSignal
+            ? "Metadata received"
+            : inboundParams.length
+              ? "Cached metadata"
+              : !emrEnabled && removeEmrParams
+                ? "CDI-only flow: inbound hemodynamics not received (expected unless backend sends)"
+                : !emrEnabled
+                  ? "EMR OFF: no inbound hemodynamics received"
+                  : "Waiting for inbound metadata";
         const outboundStatus = outboundParams.length
           ? "Profile metadata sent"
           : "No profile metadata sent yet";
+        const inboundHint =
+          !emrEnabled && removeEmrParams && !inboundHasSignal
+            ? '<div class="hemo-meta" style="margin-bottom:8px">Outbound EMR parameter filter is active. Inbound display remains monitor-only.</div>'
+            : "";
 
         const inboundRows = renderHemoRows(inboundParams);
         const outboundRows = renderHemoRows(outboundParams);
@@ -622,6 +653,7 @@
           </summary>
           <div class="hemo-collapse-body">
             <div class="hemo-meta" style="margin-bottom:8px">${inboundStatus}</div>
+            ${inboundHint}
             ${inboundRows || '<div class="hemo-empty">No inbound hemodynamics metadata or ticks received yet.</div>'}
           </div>
         </details>
@@ -738,6 +770,14 @@
       }
 
       function renderDevice(d) {
+        if (typeof emrToggleState[d.device_id] === "undefined") {
+          emrToggleState[d.device_id] = d.emr_enabled === true;
+        }
+        if (typeof removeEmrParamsState[d.device_id] === "undefined") {
+          removeEmrParamsState[d.device_id] =
+            d.remove_emr_params_from_profile_metadata === true;
+        }
+
         const connDot = d.connected ? "connected" : "disconnected";
         const badgeState = d.error ? "ERROR" : d.current_state;
         const hemoSection = renderHemoSection(d);
@@ -815,6 +855,8 @@
             ? `
           <!-- IDLE: Select profile → go to Standby -->
           <label class="emr-toggle"><input type="checkbox" id="emr_${d.device_id}" ${emrEnabledFor(d.device_id) ? "checked" : ""} onchange="setEmrToggle('${d.device_id}', this.checked)" /> EMR ON</label>
+          <label class="emr-toggle"><input type="checkbox" id="remove_emr_${d.device_id}" ${removeEmrParamsFor(d.device_id) ? "checked" : ""} ${emrEnabledFor(d.device_id) ? "disabled" : ""} onchange="setRemoveEmrParams('${d.device_id}', this.checked)" /> Remove EMR params</label>
+          <span class="refresh-info" style="font-size:0.7rem">Affects outbound profile metadata only</span>
           <select id="prof_${d.device_id}" class="profile-select" onchange="profileChanged(this, '${d.device_id}')">
             ${profileOptions()}
           </select>
@@ -991,6 +1033,10 @@
         const emrToggle = document.getElementById(`emr_${id}`);
         const profile = profSelect ? profSelect.value : undefined;
         const emrEnabled = emrToggle ? emrToggle.checked : emrEnabledFor(id);
+        const removeEmrToggle = document.getElementById(`remove_emr_${id}`);
+        const removeEmrParams = removeEmrToggle
+          ? removeEmrToggle.checked
+          : removeEmrParamsFor(id);
         const reason = fromState === "MEASURING" ? "StandByCase" : "SetProfile";
         console.log(
           "[Fleet UI] → Standby device:",
@@ -1001,12 +1047,15 @@
           reason,
           "emrEnabled:",
           emrEnabled,
+          "removeEmrParams:",
+          removeEmrParams,
         );
         apiPost(`${API}/api/devices/${id}/state`, {
           state: "STANDBY",
           reason: fromState === "MEASURING" ? reason : undefined,
           profile: profile || undefined,
           emr_enabled: emrEnabled,
+          remove_emr_params: removeEmrParams,
         });
       }
 
@@ -1045,11 +1094,15 @@
       console.log("[Fleet UI] Initializing...");
       fetchProfiles();
 
-      // Start with 5s initial refresh to give API time to start
+      // Start with a short delay, then refresh in near real-time cadence.
       setTimeout(() => {
-        console.log("[Fleet UI] Starting refresh loop (5s interval)");
+        const refreshIntervalEl = document.getElementById("refreshInterval");
+        if (refreshIntervalEl) {
+          refreshIntervalEl.textContent = `${LIVE_REFRESH_MS / 1000}s`;
+        }
+        console.log("[Fleet UI] Starting refresh loop (1s interval)");
         refresh();
-        setInterval(refresh, 5000); // Increased from 3s to 5s, gives API more time to respond
+        setInterval(refresh, LIVE_REFRESH_MS);
       }, 1000);
 
       console.log("[Fleet UI] Ready - waiting for API...");

@@ -69,6 +69,7 @@ def load_config(config_path: str) -> dict:
         pdef["param_ids"] = [int(x) for x in pdef.get("param_ids", [])]
         pdef["metadata_param_ids"] = [int(x) for x in pdef.get("metadata_param_ids", pdef["param_ids"])]
         pdef["selected_param_ids"] = [int(x) for x in pdef.get("selected_param_ids", pdef["param_ids"])]
+        pdef["emr_param_ids"] = [int(x) for x in pdef.get("emr_param_ids", [])]
 
     # ── Devices ──────────────────────────────────────────────────────────
     devices = cfg.get("devices", [])

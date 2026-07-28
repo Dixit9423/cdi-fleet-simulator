@@ -238,8 +238,9 @@ class DeviceRunner(threading.Thread):
                         "range": range_meta,
                     }
 
+                param_count = len(profile.params)
                 with self.ds.lock:
-                    self.ds.hemo_profile_received = True
+                    self.ds.hemo_profile_received = bool(param_count > 0)
                     self.ds.hemo_profile_version = int(profile.profile_version)
                     self.ds.hemo_param_catalog = hemo_params
 
@@ -252,8 +253,10 @@ class DeviceRunner(threading.Thread):
                     f"device={profile.device_id or self.ds.device_id} "
                     f"session={profile.measurement_session_id or '-'} "
                     f"profile_version={profile.profile_version} "
-                    f"params={len(profile.params)}"
+                    f"params={param_count}"
                 )
+                if param_count == 0:
+                    self._log("   Empty inbound hemodynamics metadata envelope (no backend hemo params)")
                 if params_preview:
                     self._log(f"   EMR metadata params: {params_preview}")
                 ack_msg = self._build_device_ack(
@@ -461,7 +464,7 @@ class DeviceRunner(threading.Thread):
 
     def _build_profile_metadata(self, profile_name: str, force_new_session: bool = False) -> telemetry_pb2.DeviceToManager:
         profile = self.profiles.get(profile_name, self.profiles.get("minimal", {}))
-        metadata_param_ids = list(profile.get("metadata_param_ids", profile.get("param_ids", [])))
+        metadata_param_ids, _, _ = self._get_effective_profile_param_ids(profile_name)
         selected_param_ids = set(profile.get("selected_param_ids", profile.get("param_ids", [])))
 
         # For V2 sessions, keep configured profile param ids as the source of
@@ -602,8 +605,7 @@ class DeviceRunner(threading.Thread):
             self.ds.tick_index += 1
             profile_name = self.ds.profile_name
 
-        profile = self.profiles.get(profile_name or "minimal", {})
-        param_ids = profile.get("metadata_param_ids", profile.get("param_ids", []))
+        param_ids, _, _ = self._get_effective_profile_param_ids(profile_name or "minimal")
 
         now_ms = _now_ms()
         dt = self._pb2.DataTick(
@@ -636,6 +638,35 @@ class DeviceRunner(threading.Thread):
             }
 
         return self._pb2.DeviceToManager(measurement_data_tick=dt)
+
+    def _is_emr_param(self, param_id: int, profile: dict | None = None) -> bool:
+        if profile and param_id in set(profile.get("emr_param_ids", [])):
+            return True
+
+        cat = self.catalog.get(param_id, {})
+        personality = str(cat.get("source_personality", "")).strip().lower()
+        if personality in {
+            "hemodynamics",
+            "hlm / ecmo",
+            "lab measurements",
+            "cerebral oximeter",
+        }:
+            return True
+        return False
+
+    def _get_effective_profile_param_ids(self, profile_name: str) -> tuple[list[int], bool, bool]:
+        profile = self.profiles.get(profile_name, self.profiles.get("minimal", {}))
+        base_param_ids = list(profile.get("metadata_param_ids", profile.get("param_ids", [])))
+
+        with self.ds.lock:
+            emr_enabled = bool(self.ds.emr_enabled)
+            remove_emr = bool(self.ds.remove_emr_params_from_profile_metadata)
+
+        if emr_enabled or not remove_emr:
+            return base_param_ids, emr_enabled, remove_emr
+
+        filtered_param_ids = [pid for pid in base_param_ids if not self._is_emr_param(pid, profile)]
+        return filtered_param_ids, emr_enabled, remove_emr
 
     def _build_patient_bind(self, patient_id: str) -> telemetry_pb2.DeviceToManager:
         # PatientBind is ManagerToDevice in proto, but for simulator we
@@ -789,6 +820,11 @@ class DeviceRunner(threading.Thread):
             if current not in ("IDLE", "MEASURING"):
                 self._log(f"    ✗ Cannot go to STANDBY from {current}")
                 return False
+            with self.ds.lock:
+                if "emr_enabled" in cmd:
+                    self.ds.emr_enabled = bool(cmd.get("emr_enabled"))
+                if "remove_emr_params" in cmd:
+                    self.ds.remove_emr_params_from_profile_metadata = bool(cmd.get("remove_emr_params"))
             profile = cmd.get("profile")
             self._log(f"    → {current} → STANDBY (profile={profile})")
             if current == "MEASURING":
