@@ -97,7 +97,7 @@ jobs:
           Copy-Item "devices_config.yaml" $packageDir -Force
           New-Item -ItemType Directory -Path "$packageDir\hemodynamic_simulator\simulator\config" -Force | Out-Null
 
-          Copy-Item "devices_config_1.yaml" "$packageDir\fleet_simulator" -Force
+          Copy-Item "devices_config_1device.yaml" "$packageDir\fleet_simulator" -Force
 
           # Ship only the single emr_config.yaml (use documented template if available to avoid secrets).
           if (Test-Path "simulator\config\emr_config.yaml.documented") {
