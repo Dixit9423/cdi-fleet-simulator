@@ -7,6 +7,28 @@ Use this when you want the fastest setup on Linux.
 - Docker Engine with Docker Compose plugin
 - Access to this repository
 
+## Before You Start — Required Config Edits
+
+Both simulators need the correct server IPs before they can connect to anything.
+
+**CDI simulator** — edit `devices_config.yaml` (or `devices_config_1device.yaml` for single-device proto v2):
+
+```yaml
+server:
+  host: "YOUR_CDI_GRPC_SERVER_IP" # ← change this
+  port: 9090
+```
+
+**EMR simulator** — edit `simulator/config/emr_config.yaml`:
+
+```yaml
+api_base_url: "http://YOUR_OPENEMR_HOST:PORT/apis/default" # ← change this
+```
+
+Then follow the steps below. Config files are mounted as read-only volumes so you can edit them on the host and restart containers — no rebuild needed.
+
+---
+
 ## 8 Commands
 
 1. Go to repo
@@ -32,6 +54,7 @@ docker compose up -d --build
 ```bash
 docker ps --filter name=cdi-fleet-sim
 docker ps --filter name=emr-sim
+docker compose ps
 ```
 
 5. Check logs

@@ -56,6 +56,7 @@ Key behavior:
 - Uses `python:3.10-slim`
 - Installs `requirements_fleet.txt`
 - Copies simulator sources
+- Runs as non-root user `simuser`
 - Uses checked-in Python gRPC stubs (`telemetry_pb2.py` and `telemetry_pb2_grpc.py`)
 - Exposes control panel port `8090`
 - Starts simulator with default args:
@@ -82,6 +83,9 @@ Purpose:
 - Starts both services from one source tree:
   - `cdi-fleet` on port `8090`
   - `emr-sim` on port `3001`
+- Includes service healthchecks for both APIs:
+  - CDI: `/api/fleet/summary`
+  - EMR: `/api/emr/devices`
 
 ## 3) Build image (from repo root)
 
@@ -205,6 +209,7 @@ Expected:
 
 - CDI container is `Up` with `0.0.0.0:8090->8090/tcp`
 - EMR container is `Up` with `0.0.0.0:3001->3001/tcp`
+- Health status should become `healthy` after startup warmup
 
 ## 5.2 Service logs
 

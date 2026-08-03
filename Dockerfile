@@ -11,6 +11,10 @@ RUN pip install --upgrade pip && pip install -r requirements_fleet.txt
 
 COPY . .
 
+# Run as a non-root user in the container.
+RUN useradd --create-home --shell /bin/bash simuser && chown -R simuser:simuser /app
+USER simuser
+
 EXPOSE 8090
 EXPOSE 3001
 
