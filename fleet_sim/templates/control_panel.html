@@ -59,6 +59,7 @@
         display: flex;
         gap: 8px;
         margin-bottom: 14px;
+        flex-wrap: wrap;
       }
       .kpi {
         background: var(--card);
@@ -248,6 +249,118 @@
         font-size: 0.72rem;
         color: var(--muted);
       }
+      .emr-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.76rem;
+        color: var(--text);
+        margin-right: 6px;
+      }
+      .emr-toggle input {
+        accent-color: var(--accent);
+      }
+      .hemo-panel {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(6, 182, 212, 0.06);
+      }
+      .hemo-collapse {
+        margin-top: 8px;
+        border: 1px solid rgba(6, 182, 212, 0.2);
+        border-radius: 8px;
+        background: rgba(15, 17, 23, 0.35);
+      }
+      .hemo-collapse summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 8px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.77rem;
+        color: var(--text);
+      }
+      .hemo-collapse summary::-webkit-details-marker {
+        display: none;
+      }
+      .hemo-collapse summary::after {
+        content: "▸";
+        color: var(--cyan);
+        font-size: 0.8rem;
+      }
+      .hemo-collapse[open] summary::after {
+        content: "▾";
+      }
+      .hemo-collapse-body {
+        padding: 0 10px 10px;
+      }
+      .hemo-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .hemo-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--cyan);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .hemo-meta {
+        font-size: 0.74rem;
+        color: var(--muted);
+      }
+      .hemo-empty {
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+      .hemo-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .hemo-row {
+        border: 1px solid rgba(6, 182, 212, 0.16);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: rgba(15, 17, 23, 0.45);
+      }
+      .hemo-row-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 4px;
+      }
+      .hemo-name {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .hemo-value {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--cyan);
+        white-space: nowrap;
+      }
+      .hemo-detail {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      .hemo-chip {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid rgba(6, 182, 212, 0.25);
+        color: var(--cyan);
+        background: rgba(6, 182, 212, 0.08);
+      }
       #toast {
         position: fixed;
         bottom: 20px;
@@ -342,7 +455,8 @@
           <span style="color: var(--yellow)">IDLE</span>
         </div>
         <span class="refresh-info"
-          >Auto-refresh: 5s | <span id="lastUpdate">—</span></span
+          >Live refresh: <span id="refreshInterval">1s</span> |
+          <span id="lastUpdate">—</span></span
         >
       </div>
     </header>
@@ -350,6 +464,13 @@
     <div class="kpi-bar" id="kpis"></div>
     <div class="toolbar">
       <button class="danger" onclick="stopSimulator()">Stop Simulator</button>
+      <button onclick="setAllHemoExpanded('inbound', true)">
+        Expand All Inbound
+      </button>
+      <button onclick="setAllHemoExpanded('outbound', true)">
+        Expand All Outbound
+      </button>
+      <button onclick="collapseAllHemo()">Collapse All</button>
     </div>
     <div class="grid" id="deviceGrid"></div>
     <div id="toast"></div>
@@ -358,10 +479,44 @@
       const API = ""; // same origin
 
       let profiles = {};
+      let emrToggleState = {};
+      let removeEmrParamsState = {};
       let lastFleetData = null; // Cache to prevent unnecessary DOM updates
       let refreshErrors = 0; // Track consecutive errors to prevent spam
       let maxRefreshErrors = 3; // Max errors before backing off
       let refreshBackoffMs = 3000; // Start with 3s backoff
+      let hemoExpandState = {}; // Persist details open/closed per device+section
+      const LIVE_REFRESH_MS = 1000;
+
+      function hemoKey(deviceId, kind) {
+        return `${deviceId}::${kind}`;
+      }
+
+      function isHemoExpanded(deviceId, kind) {
+        return hemoExpandState[hemoKey(deviceId, kind)] === true;
+      }
+
+      function onHemoToggle(deviceId, kind, isOpen) {
+        hemoExpandState[hemoKey(deviceId, kind)] = !!isOpen;
+      }
+
+      function setAllHemoExpanded(kind, expanded) {
+        const detailsNodes = document.querySelectorAll(
+          `details[data-hemo-kind="${kind}"]`,
+        );
+        detailsNodes.forEach((node) => {
+          const card = node.closest(".device-card");
+          const deviceId = card?.dataset?.deviceId;
+          if (!deviceId) return;
+          hemoExpandState[hemoKey(deviceId, kind)] = !!expanded;
+          node.open = !!expanded;
+        });
+      }
+
+      function collapseAllHemo() {
+        setAllHemoExpanded("inbound", false);
+        setAllHemoExpanded("outbound", false);
+      }
 
       async function fetchProfiles() {
         try {
@@ -388,6 +543,133 @@
         t.textContent = msg;
         t.style.display = "block";
         setTimeout(() => (t.style.display = "none"), 3000);
+      }
+
+      function emrEnabledFor(deviceId) {
+        return emrToggleState[deviceId] === true;
+      }
+
+      function setEmrToggle(deviceId, enabled) {
+        emrToggleState[deviceId] = !!enabled;
+        const removeToggle = document.getElementById(`remove_emr_${deviceId}`);
+        if (enabled) {
+          removeEmrParamsState[deviceId] = false;
+          if (removeToggle) removeToggle.checked = false;
+        }
+        if (removeToggle) removeToggle.disabled = !!enabled;
+      }
+
+      function removeEmrParamsFor(deviceId) {
+        return removeEmrParamsState[deviceId] === true;
+      }
+
+      function setRemoveEmrParams(deviceId, enabled) {
+        removeEmrParamsState[deviceId] = !!enabled;
+      }
+
+      function formatAlarm(meta) {
+        const alarm = meta?.alarm_limit || {};
+        if (!alarm.present) return "Alarm: none";
+        return `Alarm: ${alarm.low || "-"} to ${alarm.high || "-"}`;
+      }
+
+      function formatRange(meta) {
+        const range = meta?.range || {};
+        if (!range.present) return "Range: none";
+        return `Range: ${range.operating_low || "-"} to ${range.operating_high || "-"}`;
+      }
+
+      function renderHemoRows(params) {
+        return params
+          .map(
+            (param) => `
+          <div class="hemo-row">
+            <div class="hemo-row-top">
+              <div class="hemo-name">${param.name} <span class="hemo-chip">${param.param_id}</span></div>
+              <div class="hemo-value">${param.latest_value ?? "--"} ${param.unit || ""}</div>
+            </div>
+            <div class="hemo-detail">
+              <span>${param.source_personality || "Unknown source"}${param.source_device_id ? ` (${param.source_device_id})` : ""}</span>
+              <span>${formatAlarm(param)}</span>
+              <span>${formatRange(param)}</span>
+            </div>
+          </div>
+        `,
+          )
+          .join("");
+      }
+
+      function renderHemoSection(d) {
+        const inboundParams = d.hemo_inbound_params || d.hemo_params || [];
+        const outboundParams = d.hemo_outbound_params || [];
+        const emrEnabled = d.emr_enabled === true;
+        const removeEmrParams =
+          d.remove_emr_params_from_profile_metadata === true;
+        const inboundWithValue = inboundParams.filter(
+          (p) => p.latest_value != null,
+        ).length;
+        const outboundWithValue = outboundParams.filter(
+          (p) => p.latest_value != null,
+        ).length;
+        const inboundHasSignal =
+          inboundParams.length > 0 || inboundWithValue > 0;
+
+        const inboundStatus =
+          d.hemo_inbound_profile_received && inboundHasSignal
+            ? "Metadata received"
+            : inboundParams.length
+              ? "Cached metadata"
+              : !emrEnabled && removeEmrParams
+                ? "CDI-only flow: inbound hemodynamics not received (expected unless backend sends)"
+                : !emrEnabled
+                  ? "EMR OFF: no inbound hemodynamics received"
+                  : "Waiting for inbound metadata";
+        const outboundStatus = outboundParams.length
+          ? "Profile metadata sent"
+          : "No profile metadata sent yet";
+        const inboundHint =
+          !emrEnabled && removeEmrParams && !inboundHasSignal
+            ? '<div class="hemo-meta" style="margin-bottom:8px">Outbound EMR parameter filter is active. Inbound display remains monitor-only.</div>'
+            : "";
+
+        const inboundRows = renderHemoRows(inboundParams);
+        const outboundRows = renderHemoRows(outboundParams);
+
+        const inboundOpen = isHemoExpanded(d.device_id, "inbound")
+          ? "open"
+          : "";
+        const outboundOpen = isHemoExpanded(d.device_id, "outbound")
+          ? "open"
+          : "";
+
+        return `
+      <div class="hemo-panel">
+        <div class="hemo-title">Hemodynamics</div>
+
+        <details class="hemo-collapse" data-hemo-kind="inbound" ${inboundOpen} ontoggle="onHemoToggle('${d.device_id}', 'inbound', this.open)">
+          <summary>
+            <span>Inbound (Device Manager → CDI OneView)</span>
+            <span class="hemo-meta">${inboundParams.length} params | ${inboundWithValue} values | v${d.hemo_inbound_profile_version || d.hemo_profile_version || 0} | seq ${d.hemo_inbound_last_tick_seq_no ?? d.hemo_last_tick_seq_no ?? "--"}</span>
+          </summary>
+          <div class="hemo-collapse-body">
+            <div class="hemo-meta" style="margin-bottom:8px">${inboundStatus}</div>
+            ${inboundHint}
+            ${inboundRows || '<div class="hemo-empty">No inbound hemodynamics metadata or ticks received yet.</div>'}
+          </div>
+        </details>
+
+        <details class="hemo-collapse" data-hemo-kind="outbound" ${outboundOpen} ontoggle="onHemoToggle('${d.device_id}', 'outbound', this.open)">
+          <summary>
+            <span>Outbound (CDI OneView → Device Manager)</span>
+            <span class="hemo-meta">${outboundParams.length} params | ${outboundWithValue} values | v${d.hemo_outbound_profile_version || 0} | seq ${d.hemo_outbound_last_tick_seq_no ?? "--"}</span>
+          </summary>
+          <div class="hemo-collapse-body">
+            <div class="hemo-meta" style="margin-bottom:8px">${outboundStatus}</div>
+            ${outboundRows || '<div class="hemo-empty">No outbound profile metadata built yet. Move device to STANDBY from IDLE to send profile.</div>'}
+          </div>
+        </details>
+      </div>
+    `;
       }
 
       async function apiPost(url, body) {
@@ -488,8 +770,17 @@
       }
 
       function renderDevice(d) {
+        if (typeof emrToggleState[d.device_id] === "undefined") {
+          emrToggleState[d.device_id] = d.emr_enabled === true;
+        }
+        if (typeof removeEmrParamsState[d.device_id] === "undefined") {
+          removeEmrParamsState[d.device_id] =
+            d.remove_emr_params_from_profile_metadata === true;
+        }
+
         const connDot = d.connected ? "connected" : "disconnected";
         const badgeState = d.error ? "ERROR" : d.current_state;
+        const hemoSection = renderHemoSection(d);
         const sessionInfo = d.measurement_session_id
           ? `<span class="label">Session:</span> <span class="val">${d.measurement_session_id}</span>`
           : "";
@@ -526,6 +817,12 @@
           patientIndicator = `<div class="patient-state pending">🟡 Patient Decision Required ${pendingSrcBadge}</div>`;
         } else if ((d.cooldown_remaining_sec || 0) > 0) {
           patientIndicator = `<div class="patient-state cooldown"><span class="spinner"></span>Next patient ID in ${d.cooldown_remaining_sec}s</div>`;
+        } else if (d.awaiting_backend_patient_bind) {
+          const backendSyncInfo =
+            (d.backend_patient_sync_remaining_sec || 0) > 0
+              ? ` <span class="val">(refresh in ${d.backend_patient_sync_remaining_sec}s)</span>`
+              : "";
+          patientIndicator = `<div class="patient-state cooldown"><span class="spinner"></span>Awaiting backend patient bind${backendSyncInfo}</div>`;
         }
 
         return `
@@ -551,11 +848,15 @@
         ${tickInfo}
         ${errorInfo}
       </div>
+      ${hemoSection}
       <div class="actions">
         ${
           d.current_state === "IDLE"
             ? `
           <!-- IDLE: Select profile → go to Standby -->
+          <label class="emr-toggle"><input type="checkbox" id="emr_${d.device_id}" ${emrEnabledFor(d.device_id) ? "checked" : ""} onchange="setEmrToggle('${d.device_id}', this.checked)" /> EMR ON</label>
+          <label class="emr-toggle"><input type="checkbox" id="remove_emr_${d.device_id}" ${removeEmrParamsFor(d.device_id) ? "checked" : ""} ${emrEnabledFor(d.device_id) ? "disabled" : ""} onchange="setRemoveEmrParams('${d.device_id}', this.checked)" /> Remove EMR params</label>
+          <span class="refresh-info" style="font-size:0.7rem">Affects outbound profile metadata only</span>
           <select id="prof_${d.device_id}" class="profile-select" onchange="profileChanged(this, '${d.device_id}')">
             ${profileOptions()}
           </select>
@@ -578,14 +879,6 @@
           <!-- MEASURING: Stop (→Idle) or Standby -->
           <button class="danger" onclick="stopMeasuring('${d.device_id}')">■ Stop → Idle</button>
           <button onclick="toStandby('${d.device_id}', '${d.current_state}')">⏸ Standby</button>
-          ${
-            !d.patient_id
-              ? `
-            <input id="bind_${d.device_id}" placeholder="PAT-ID" style="width:100px" class="bind-input" />
-            <button onclick="bindPatient('${d.device_id}')">🔗 Bind</button>
-          `
-              : ""
-          }
         `
             : ""
         }
@@ -737,7 +1030,13 @@
         // From IDLE: include selected profile so ProfileMetadata is sent
         // From MEASURING: profile is already active
         const profSelect = document.getElementById(`prof_${id}`);
+        const emrToggle = document.getElementById(`emr_${id}`);
         const profile = profSelect ? profSelect.value : undefined;
+        const emrEnabled = emrToggle ? emrToggle.checked : emrEnabledFor(id);
+        const removeEmrToggle = document.getElementById(`remove_emr_${id}`);
+        const removeEmrParams = removeEmrToggle
+          ? removeEmrToggle.checked
+          : removeEmrParamsFor(id);
         const reason = fromState === "MEASURING" ? "StandByCase" : "SetProfile";
         console.log(
           "[Fleet UI] → Standby device:",
@@ -746,11 +1045,17 @@
           profile,
           "reason:",
           reason,
+          "emrEnabled:",
+          emrEnabled,
+          "removeEmrParams:",
+          removeEmrParams,
         );
         apiPost(`${API}/api/devices/${id}/state`, {
           state: "STANDBY",
-          reason,
+          reason: fromState === "MEASURING" ? reason : undefined,
           profile: profile || undefined,
+          emr_enabled: emrEnabled,
+          remove_emr_params: removeEmrParams,
         });
       }
 
@@ -759,18 +1064,6 @@
         apiPost(`${API}/api/devices/${id}/state`, {
           state: "IDLE",
           reason: "StopCase",
-        });
-      }
-
-      function bindPatient(id) {
-        const pat = document.getElementById(`bind_${id}`)?.value;
-        if (!pat) {
-          toast("⚠ Enter a patient ID");
-          return;
-        }
-        apiPost(`${API}/api/devices/${id}/patient`, {
-          action: "bind",
-          patient_id: pat,
         });
       }
 
@@ -801,11 +1094,15 @@
       console.log("[Fleet UI] Initializing...");
       fetchProfiles();
 
-      // Start with 5s initial refresh to give API time to start
+      // Start with a short delay, then refresh in near real-time cadence.
       setTimeout(() => {
-        console.log("[Fleet UI] Starting refresh loop (5s interval)");
+        const refreshIntervalEl = document.getElementById("refreshInterval");
+        if (refreshIntervalEl) {
+          refreshIntervalEl.textContent = `${LIVE_REFRESH_MS / 1000}s`;
+        }
+        console.log("[Fleet UI] Starting refresh loop (1s interval)");
         refresh();
-        setInterval(refresh, 5000); // Increased from 3s to 5s, gives API more time to respond
+        setInterval(refresh, LIVE_REFRESH_MS);
       }, 1000);
 
       console.log("[Fleet UI] Ready - waiting for API...");

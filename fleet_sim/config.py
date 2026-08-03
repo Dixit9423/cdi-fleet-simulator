@@ -12,6 +12,15 @@ from pathlib import Path
 import yaml
 
 
+def _normalize_proto_version(raw_value: str | None) -> str:
+    value = str(raw_value or "v1").strip().lower()
+    if value not in {"v1", "v2"}:
+        print(f"[Config] ERROR: Unsupported proto_version: {raw_value}")
+        print("[Config] Supported values: v1, v2")
+        sys.exit(1)
+    return value
+
+
 def _expand(p: str) -> str:
     """Expand ~, env vars, and make absolute."""
     return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve())
@@ -31,6 +40,8 @@ def load_config(config_path: str) -> dict:
     srv = cfg.get("server", {})
     srv.setdefault("host", "localhost")
     srv.setdefault("port", 5555)
+    srv.setdefault("verbose_tick_logs", False)
+    srv["proto_version"] = _normalize_proto_version(srv.get("proto_version", "v1"))
     tls = srv.get("tls", {})
     tls.setdefault("enabled", False)
     if tls.get("enabled"):
@@ -58,11 +69,13 @@ def load_config(config_path: str) -> dict:
         pdef["param_ids"] = [int(x) for x in pdef.get("param_ids", [])]
         pdef["metadata_param_ids"] = [int(x) for x in pdef.get("metadata_param_ids", pdef["param_ids"])]
         pdef["selected_param_ids"] = [int(x) for x in pdef.get("selected_param_ids", pdef["param_ids"])]
+        pdef["emr_param_ids"] = [int(x) for x in pdef.get("emr_param_ids", [])]
 
     # ── Devices ──────────────────────────────────────────────────────────
     devices = cfg.get("devices", [])
     for d in devices:
         d["device_id"] = f"CDI-{d['serial']}"
+        d["proto_version"] = _normalize_proto_version(d.get("proto_version", srv["proto_version"]))
         d.setdefault("sw_version", "1.0.0")
         d.setdefault("site", "UNKNOWN")
         d.setdefault("initial_state", "IDLE")

@@ -34,12 +34,16 @@ datas = [
     # Proto stubs → top-level (run_fleet.py adds proto dir to sys.path)
     (os.path.join(PROTO_DIR, 'telemetry_pb2.py'), '.'),
     (os.path.join(PROTO_DIR, 'telemetry_pb2_grpc.py'), '.'),
+    (os.path.join(PROTO_DIR, 'core_v2_pb2.py'), '.'),
+    (os.path.join(PROTO_DIR, 'core_v2_pb2_grpc.py'), '.'),
 ]
 
 # ── Hidden imports PyInstaller can miss ──────────────────────────────────
 hiddenimports = [
     'telemetry_pb2',
     'telemetry_pb2_grpc',
+    'core_v2_pb2',
+    'core_v2_pb2_grpc',
     'grpc',
     'grpc._cython',
     'grpc._cython.cygrpc',

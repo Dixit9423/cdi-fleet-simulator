@@ -14,3 +14,30 @@ dist_rel_v102/
 CDI-Fleet-Simulator-v1.0.1-Windows/
 CDI-Fleet-Simulator-v1.0.2-Windows/
 .fleet_runtime_state.json
+config_backups/
+_remote_server_cert.pem
+_sclient_raw.txt
+.github/
+.git/
+
+# Secrets and certificates — never bake into image
+.env
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+certs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db

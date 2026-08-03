@@ -35,12 +35,17 @@ class DeviceState:
         self.lock = threading.Lock()
         self.device_id: str = device_cfg["device_id"]
         self.serial: str = device_cfg["serial"]
+        self.proto_version: str = str(device_cfg.get("proto_version", "v1")).lower()
         self.site: str = device_cfg["site"]
         self.sw_version: str = device_cfg["sw_version"]
         self.current_state: str = device_cfg["initial_state"]  # MEASURING|IDLE|STANDBY
         self.patient_id: str | None = device_cfg.get("patient_id")
         self.patient_source: str | None = _classify_patient_source(self.patient_id)
         self.profile_name: str | None = device_cfg.get("profile")
+        self.emr_enabled: bool = bool(device_cfg.get("emr_enabled", False))
+        self.remove_emr_params_from_profile_metadata: bool = bool(
+            device_cfg.get("remove_emr_params_from_profile_metadata", False)
+        )
         self.probes: dict = device_cfg.get("probes", {})
         self.tick_data: dict[int, list[str]] = device_cfg.get("tick_data", {})
         self.tick_index: int = 0
@@ -56,7 +61,20 @@ class DeviceState:
         self.pending_patient_source: str | None = None
         self.deferred_patient_id: str | None = None
         self.patient_cooldown_until_ms: int | None = None
+        self.awaiting_backend_patient_bind: bool = False
+        self.next_backend_patient_sync_until_ms: int | None = None
         self.case_paused: bool = False
+        # Runtime cache for manager-pushed hemodynamics over V2.
+        self.hemo_profile_received: bool = False
+        self.hemo_profile_version: int = 0
+        self.hemo_param_catalog: dict[int, dict[str, Any]] = {}
+        self.hemo_last_tick_seq_no: int | None = None
+        self.hemo_last_tick_values: dict[int, str] = {}
+        # Runtime cache for simulator-outbound hemodynamics profile/ticks.
+        self.hemo_outbound_profile_version: int = 0
+        self.hemo_outbound_param_catalog: dict[int, dict[str, Any]] = {}
+        self.hemo_outbound_last_tick_seq_no: int | None = None
+        self.hemo_outbound_last_tick_values: dict[int, str] = {}
         self.command_queue: Queue = Queue()
 
     def snapshot(self) -> dict:
@@ -67,14 +85,55 @@ class DeviceState:
             if self.patient_cooldown_until_ms and self.patient_cooldown_until_ms > now_ms:
                 cooldown_remaining_sec = int((self.patient_cooldown_until_ms - now_ms + 999) / 1000)
 
+            backend_sync_remaining_sec = 0
+            if self.next_backend_patient_sync_until_ms and self.next_backend_patient_sync_until_ms > now_ms:
+                backend_sync_remaining_sec = int((self.next_backend_patient_sync_until_ms - now_ms + 999) / 1000)
+
+            inbound_hemo_params = []
+            for param_id in sorted(self.hemo_param_catalog.keys()):
+                meta = self.hemo_param_catalog[param_id]
+                inbound_hemo_params.append(
+                    {
+                        "param_id": param_id,
+                        "name": meta.get("name", f"Param_{param_id}"),
+                        "unit": meta.get("unit", ""),
+                        "selected": bool(meta.get("selected", False)),
+                        "source_personality": meta.get("source_personality", ""),
+                        "source_device_id": meta.get("source_device_id", ""),
+                        "latest_value": self.hemo_last_tick_values.get(param_id),
+                        "alarm_limit": copy.deepcopy(meta.get("alarm_limit", {})),
+                        "range": copy.deepcopy(meta.get("range", {})),
+                    }
+                )
+
+            outbound_hemo_params = []
+            for param_id in sorted(self.hemo_outbound_param_catalog.keys()):
+                meta = self.hemo_outbound_param_catalog[param_id]
+                outbound_hemo_params.append(
+                    {
+                        "param_id": param_id,
+                        "name": meta.get("name", f"Param_{param_id}"),
+                        "unit": meta.get("unit", ""),
+                        "selected": bool(meta.get("selected", False)),
+                        "source_personality": meta.get("source_personality", ""),
+                        "source_device_id": meta.get("source_device_id", ""),
+                        "latest_value": self.hemo_outbound_last_tick_values.get(param_id),
+                        "alarm_limit": copy.deepcopy(meta.get("alarm_limit", {})),
+                        "range": copy.deepcopy(meta.get("range", {})),
+                    }
+                )
+
             return {
                 "device_id": self.device_id,
                 "serial": self.serial,
+                "proto_version": self.proto_version,
                 "site": self.site,
                 "sw_version": self.sw_version,
                 "current_state": self.current_state,
                 "patient_id": self.patient_id,
                 "profile_name": self.profile_name,
+                "emr_enabled": self.emr_enabled,
+                "remove_emr_params_from_profile_metadata": self.remove_emr_params_from_profile_metadata,
                 "connected": self.connected,
                 "connection_id": self.connection_id,
                 "measurement_session_id": self.measurement_session_id,
@@ -88,7 +147,29 @@ class DeviceState:
                 "deferred_patient_id": self.deferred_patient_id,
                 "patient_cooldown_until_ms": self.patient_cooldown_until_ms,
                 "cooldown_remaining_sec": cooldown_remaining_sec,
+                "awaiting_backend_patient_bind": self.awaiting_backend_patient_bind,
+                "next_backend_patient_sync_until_ms": self.next_backend_patient_sync_until_ms,
+                "backend_patient_sync_remaining_sec": backend_sync_remaining_sec,
                 "case_paused": self.case_paused,
+                # Inbound hemodynamics from backend manager.
+                "hemo_profile_received": self.hemo_profile_received,
+                "hemo_profile_version": self.hemo_profile_version,
+                "hemo_param_count": len(self.hemo_param_catalog),
+                "hemo_last_tick_seq_no": self.hemo_last_tick_seq_no,
+                "hemo_last_tick_value_count": len(self.hemo_last_tick_values),
+                "hemo_params": inbound_hemo_params,
+                "hemo_inbound_profile_received": self.hemo_profile_received,
+                "hemo_inbound_profile_version": self.hemo_profile_version,
+                "hemo_inbound_param_count": len(self.hemo_param_catalog),
+                "hemo_inbound_last_tick_seq_no": self.hemo_last_tick_seq_no,
+                "hemo_inbound_last_tick_value_count": len(self.hemo_last_tick_values),
+                "hemo_inbound_params": inbound_hemo_params,
+                # Outbound hemodynamics sent by simulator to backend.
+                "hemo_outbound_profile_version": self.hemo_outbound_profile_version,
+                "hemo_outbound_param_count": len(self.hemo_outbound_param_catalog),
+                "hemo_outbound_last_tick_seq_no": self.hemo_outbound_last_tick_seq_no,
+                "hemo_outbound_last_tick_value_count": len(self.hemo_outbound_last_tick_values),
+                "hemo_outbound_params": outbound_hemo_params,
                 "error": self.error,
             }
 
@@ -167,7 +248,11 @@ class StateStore:
                     "patient_id": dev.patient_id,
                     "patient_source": dev.patient_source,
                     "profile_name": dev.profile_name,
+                    "emr_enabled": dev.emr_enabled,
+                    "remove_emr_params_from_profile_metadata": dev.remove_emr_params_from_profile_metadata,
                     "tick_data": dev.tick_data,
+                    "awaiting_backend_patient_bind": dev.awaiting_backend_patient_bind,
+                    "next_backend_patient_sync_until_ms": dev.next_backend_patient_sync_until_ms,
                 }
 
         folder = os.path.dirname(file_path)
@@ -194,6 +279,20 @@ class StateStore:
                 dev.patient_id = state.get("patient_id", dev.patient_id)
                 dev.patient_source = state.get("patient_source", dev.patient_source)
                 dev.profile_name = state.get("profile_name", dev.profile_name)
+                dev.emr_enabled = bool(state.get("emr_enabled", dev.emr_enabled))
+                dev.remove_emr_params_from_profile_metadata = bool(
+                    state.get(
+                        "remove_emr_params_from_profile_metadata",
+                        dev.remove_emr_params_from_profile_metadata,
+                    )
+                )
+                dev.awaiting_backend_patient_bind = bool(
+                    state.get("awaiting_backend_patient_bind", dev.awaiting_backend_patient_bind)
+                )
+                dev.next_backend_patient_sync_until_ms = state.get(
+                    "next_backend_patient_sync_until_ms",
+                    dev.next_backend_patient_sync_until_ms,
+                )
 
                 loaded_tick_data = state.get("tick_data")
                 if isinstance(loaded_tick_data, dict):
