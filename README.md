@@ -4,7 +4,7 @@
 
 ### For CDI Fleet Simulator (gRPC)
 
-Edit: `devices_config.yaml`
+Edit: `devices_config_1device.yaml` (or `devices_config.yaml`) whichever is present inside simulator directory.
 
 - Change server host/port
 - Modify device profiles and tick data
